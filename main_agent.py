@@ -168,7 +168,9 @@ class ChiefArchitectAgent:
             "calculate_probability_distribution": probability_distribution,
             "calculate_descriptive_statistics": calculate_descriptive_statistics,
             "symbolic_physics_manipulation": symbolic_manipulation, "perform_vector_operation": vector_operation,
-            "mark_step_complete": self._mark_step_complete, "request_user_input": self._request_user_input
+            "mark_step_complete": self._mark_step_complete, "request_user_input": self._request_user_input,
+            "symbolic_manipulation": symbolic_manipulation,
+            "vector_operation": vector_operation
         }
 
         self.executor_tool_config = protos.Tool(
