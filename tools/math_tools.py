@@ -1,17 +1,16 @@
 """math_tool_v2_cleaned.py
 --------------------------------
-A compact, self‑contained collection of helper utilities for evaluating string‑based
-mathematical expressions, working with common probability distributions, and
-computing descriptive statistics.
+A compact, self‑contained collection of helper utilities for evaluating
+string‑based mathematical expressions, working with common probability
+distributions, and computing descriptive statistics.
 
-Highlights of this cleaned version
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-* Removed duplicate function definitions and merge‑conflict artefacts.
-* Consolidated the safe‑evaluation scope builder so it appears only once.
-* Added full type hints and tightened imports (``Any`` from ``typing``).
-* Re‑wrote doc‑strings for clarity and consistency.
-* Kept the public API unchanged: ``solve_expression``, ``probability_distribution``,
-  and ``calculate_descriptive_statistics``.
+Highlights
+~~~~~~~~~~
+* Merge‑conflict artefacts removed.
+* Single, reusable safe‑eval scope builder.
+* Full type hints + tidy imports.
+* Public API unchanged: ``solve_expression``, ``probability_distribution``,
+  ``calculate_descriptive_statistics``.
 """
 from __future__ import annotations
 
@@ -24,6 +23,12 @@ import numpy as np
 from scipy.stats import chi2, f, norm, t
 from sympy import SympifyError, latex, sympify
 
+__all__ = [
+    "solve_expression",
+    "probability_distribution",
+    "calculate_descriptive_statistics",
+]
+
 # ---------------------------------------------------------------------------
 # Logging configuration
 # ---------------------------------------------------------------------------
@@ -33,17 +38,15 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
-
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
 def _create_safe_eval_scope() -> Dict[str, Any]:
-    """Return a restricted namespace for :pyfunc:`eval` containing math/NumPy helpers."""
-    scope: Dict[str, Any] = {
-        k: v for k, v in math.__dict__.items() if not k.startswith("__")
-    }
-    # Selected NumPy helpers (add more if needed)
+    """Return a restricted namespace for ``eval`` containing math/NumPy helpers."""
+    scope: Dict[str, Any] = {k: v for k, v in math.__dict__.items() if not k.startswith("__")}
+
+    # Select NumPy helpers to expose
     for name in (
         "array",
         "linspace",
@@ -67,7 +70,7 @@ def _create_safe_eval_scope() -> Dict[str, Any]:
         elif hasattr(math, name):
             scope[name] = getattr(math, name)
 
-    # Trig helpers that accept degrees directly
+    # Extra helpers (degrees input)
     scope.update(
         {
             "sin_deg": lambda x: math.sin(math.radians(x)),
@@ -76,8 +79,7 @@ def _create_safe_eval_scope() -> Dict[str, Any]:
         }
     )
 
-    # Whitelisted built‑ins
-    scope.update({"abs": abs, "round": round, "len": len})
+    scope.update({"abs": abs, "round": round, "len": len})  # whitelisted built‑ins
     return scope
 
 
@@ -103,44 +105,34 @@ _TRIG_PATTERN = re.compile(r"(sin|cos|tan)\(([^()]+)\)")
 
 
 def _convert_trig_degrees(expr: str) -> str:
-    """Convert *numeric* trig calls that look like degrees to radian form."""
+    """Convert *numeric* trig calls given in degrees to radian form."""
 
-    def _repl(match: re.Match[str]) -> str:  # pylint: disable=unused‑argument
+    def _repl(match: re.Match[str]) -> str:
         func, arg = match.group(1), match.group(2).strip()
         try:
             val = float(arg)
-            # Heuristic: if |val| > 2π, treat arg as degrees
-            if abs(val) > 2 * math.pi:
+            if abs(val) > 2 * math.pi:  # heuristic
                 return f"{func}(radians({arg}))"
-        except ValueError:  # non‑numeric arg – fall through
+        except ValueError:  # non‑numeric arg
             if re.search(r"deg|degree", arg, re.IGNORECASE):
                 return f"{func}(radians({arg}))"
         return f"{func}({arg})"
 
     return _TRIG_PATTERN.sub(_repl, expr)
 
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-
 def solve_expression(expression: str) -> Dict[str, Any]:
-    """Safely *eval* an arithmetic expression and return its numeric and LaTeX forms.
-
-    The function also normalizes the caret (``^``) operator to Python's ``**``
-    exponentiation to provide a more user-friendly syntax.
-    """
+    """Safely evaluate *expression* and return numeric + LaTeX representations."""
     LOGGER.info("Evaluating expression: %s", expression)
-    prepared_expr = _convert_trig_degrees(expression)
-    prepared_expr = prepared_expr.replace("^", "**")
+    prepared_expr = _convert_trig_degrees(expression).replace("^", "**")
     safe_scope = _create_safe_eval_scope()
 
-    # Attempt LaTeX prettification (best‑effort)
+    # Build LaTeX (best‑effort)
     try:
-        display_expr = (
-            prepared_expr.replace("np.", "").replace("math.", "")
-        )  # cosmetic only
+        display_expr = prepared_expr.replace("np.", "").replace("math.", "")
         latex_repr = latex(sympify(display_expr))
     except (SympifyError, TypeError):
         latex_repr = prepared_expr  # fallback
@@ -150,13 +142,15 @@ def solve_expression(expression: str) -> Dict[str, Any]:
         if isinstance(result, np.ndarray):
             result = result.tolist()
         return _prepare_return_dict("success", result=result, latex_repr=latex_repr)
-    except Exception as exc:  # pylint: disable=broad‑except
+    except Exception as exc:  # pylint: disable=broad-except
         msg = f"Failed to evaluate expression '{expression}': {exc}"
         LOGGER.error(msg)
         return _prepare_return_dict("error", reason=msg)
 
 
-# Probability distributions --------------------------------------------------
+# ---------------------------------------------------------------------------
+# Probability distributions
+# ---------------------------------------------------------------------------
 
 def probability_distribution(
     dist_type: str,
@@ -166,8 +160,8 @@ def probability_distribution(
 ) -> Dict[str, Any]:
     """Compute PDF/PMF, CDF, or quantile for common 1‑D distributions.
 
-    Supported ``dist_type`` values: ``'normal'``, ``'t'``, ``'chi2'``, ``'f'``.
-    Use the ``operation`` keyword in *params* (``'pdf'`` | ``'cdf'`` | ``'quantile'``).
+    ``dist_type`` ∈ {``'normal'``, ``'t'``, ``'chi2'``, ``'f'``}
+    Use ``operation`` kwarg: ``'pdf'`` | ``'cdf'`` | ``'quantile'``.
     """
     operation = params.pop("operation", "pdf")
     LOGGER.info(
@@ -178,6 +172,7 @@ def probability_distribution(
         params,
     )
 
+    # Choose distribution
     try:
         match dist_type:
             case "normal":
@@ -189,38 +184,33 @@ def probability_distribution(
             case "f":
                 dist = f(dfn=params["dfn"], dfd=params["dfd"])
             case _:
-                return _prepare_return_dict(
-                    "error", reason=f"Unsupported distribution type: {dist_type}"
-                )
+                return _prepare_return_dict("error", reason=f"Unsupported distribution type: {dist_type}")
 
+        # Apply operation
         match operation:
             case "pdf":
                 result = dist.pdf(x)
             case "cdf":
                 result = dist.cdf(x)
             case "quantile":
-                result = dist.ppf(x)  # here x is prob.
+                result = dist.ppf(x)  # here x is probability
             case _:
-                return _prepare_return_dict(
-                    "error", reason=f"Invalid operation: {operation}"
-                )
+                return _prepare_return_dict("error", reason=f"Invalid operation: {operation}")
 
         return _prepare_return_dict("success", result=result)
-    except Exception as exc:  # pylint: disable=broad‑except
+    except Exception as exc:  # pylint: disable=broad-except
         msg = f"Probability calculation failed: {exc}"
         LOGGER.error(msg)
         return _prepare_return_dict("error", reason=msg)
 
 
-# Descriptive statistics -----------------------------------------------------
+# ---------------------------------------------------------------------------
+# Descriptive statistics
+# ---------------------------------------------------------------------------
 
-def calculate_descriptive_statistics(
-    data: List[Union[int, float]] | np.ndarray,
-) -> Dict[str, Any]:
+def calculate_descriptive_statistics(data: List[Union[int, float]] | np.ndarray) -> Dict[str, Any]:
     """Return common descriptive statistics for *data* (list or ``np.ndarray``)."""
-    if not isinstance(data, (list, np.ndarray)) or not all(
-        isinstance(x, (int, float)) for x in data
-    ):
+    if not isinstance(data, (list, np.ndarray)) or not all(isinstance(x, (int, float)) for x in data):
         return _prepare_return_dict("error", reason="Input must be a list of numbers.")
 
     if len(data) == 0:
@@ -243,14 +233,7 @@ def calculate_descriptive_statistics(
             "75th_percentile": float(np.percentile(arr, 75)),
         }
         return _prepare_return_dict("success", result=stats)
-    except Exception as exc:  # pylint: disable=broad‑except
+    except Exception as exc:  # pylint: disable=broad-except
         msg = f"Failed to calculate statistics: {exc}"
         LOGGER.error(msg)
         return _prepare_return_dict("error", reason=msg)
-
-
-__all__ = [
-    "solve_expression",
-    "probability_distribution",
-    "calculate_descriptive_statistics",
-]
