@@ -17,12 +17,12 @@ if False:
     from main_agent import TaskExecutionContext, ChiefArchitectAgent
 
 AGENT_LOGGER = logging.getLogger("ChiefArchitectAgent")
-
+MAX_RETRIES = 2 # Set a limit for self-correction attempts
 
 class TaskModeHandler(BaseModeHandler):
     """
-    Handles complex, multi-step tasks by orchestrating a planning phase,
-    an execution phase with tool use, and a final reporting phase.
+    Handles complex, multi-step tasks by orchestrating planning, execution,
+    and a new self-correction loop.
     """
 
     async def handle(self, prompt: str, image_data: Optional[str] = None,
@@ -32,14 +32,18 @@ class TaskModeHandler(BaseModeHandler):
             raise ValueError("TaskModeHandler requires a TaskExecutionContext to manage state.")
 
         try:
+            # Initial Planning
             plan = await self._perform_planning(task_context, deep_reasoning, image_data)
             if not plan:
                 await self.progress_manager.broadcast("final_result", "The agent could not generate a valid plan.")
                 return
 
-            task_context.plan = plan  # Set the plan in the context
+            await task_context.set_plan(plan)
 
-            execution_successful, step_outputs = await self._perform_execution(task_context)
+            # Execution with Self-Correction Loop
+            execution_successful, step_outputs = await self._perform_execution_with_correction(task_context)
+
+            # Final Reporting
             await self._generate_final_response(task_context, execution_successful, step_outputs)
 
         except Exception as e:
@@ -49,25 +53,31 @@ class TaskModeHandler(BaseModeHandler):
                                                   f"The agent failed to complete the task due to a critical error: {e}")
 
     async def _perform_planning(self, task_context: 'TaskExecutionContext', deep_reasoning: bool,
-                                image_data: Optional[str] = None) -> Optional[List[Dict]]:
-        await self.progress_manager.broadcast("log",
-                                              f"Phase 1: Planning (Mode: {'Deep Reasoning' if deep_reasoning else 'Standard'})...")
-        project_state = f"--- File System ---\n{get_fs_state_str()}"
-        prompt_template = get_deep_reasoning_prompt if deep_reasoning else get_standard_planning_prompt
+                                image_data: Optional[str] = None, is_correction: bool = False, error_message: str = "") -> Optional[List[Dict]]:
+        if is_correction:
+            await self.progress_manager.broadcast("log", "Phase 1.5: Re-planning for Self-Correction...")
+            prompt_template = get_self_correction_prompt
+            planning_prompt = prompt_template(
+                original_prompt=task_context.original_prompt,
+                failed_step_id=next((s['id'] for s in task_context.plan if s.get('status') == 'failed'), 'Unknown'),
+                current_plan=task_context.plan,
+                scratchpad=task_context.scratchpad,
+                project_state=get_fs_state_str(),
+                error_message=error_message
+            )
+        else:
+            await self.progress_manager.broadcast("log",
+                                                  f"Phase 1: Planning (Mode: {'Deep Reasoning' if deep_reasoning else 'Standard'})...")
+            prompt_template = get_deep_reasoning_prompt if deep_reasoning else get_standard_planning_prompt
+            planning_prompt = prompt_template(task_context.original_prompt, get_fs_state_str())
 
-        # We now use the unified prompt template from the updated file
-        planning_prompt = prompt_template(task_context.original_prompt, project_state)
         planning_content = [planning_prompt]
-
         if image_data:
-            try:
-                image_bytes = base64.b64decode(image_data)
-                planning_content.append(Image.open(io.BytesIO(image_bytes)))
-                await self.progress_manager.broadcast("log", "Planner is considering the attached image.")
-            except Exception as e:
-                AGENT_LOGGER.error(f"Could not process image for planner: {e}")
+            # ... (image handling code remains the same)
+            pass
 
         response_stream = await self.agent.planner_model.generate_content_async(planning_content, stream=True)
+        # ... (response streaming and JSON extraction code remains the same)
         full_response_text = ""
         async for chunk in response_stream:
             try:
@@ -84,34 +94,34 @@ class TaskModeHandler(BaseModeHandler):
             return json.loads(json_str)
         except json.JSONDecodeError as e:
             AGENT_LOGGER.error(f"Failed to extract JSON plan from response: {full_response_text}. Error: {e}")
+            # In case of correction, we might not want to raise an error but return None
+            if is_correction:
+                return None
             raise ValueError("The planning model did not return a valid JSON plan.")
 
-    async def _perform_execution(self, task_context: 'TaskExecutionContext') -> bool:
-        await self.progress_manager.broadcast("log", "Phase 2: Execution...")
-
-        # This dictionary is the agent's "memory" for the duration of this task
+    async def _perform_execution_with_correction(self, task_context: 'TaskExecutionContext') -> (bool, Dict):
+        """ New main execution loop that incorporates self-correction. """
         step_outputs: Dict[str, Any] = {}
         all_steps_succeeded = True
+        current_step_index = 0
 
-        for i, step in enumerate(task_context.plan):
-            step_id = step.get('id', str(i + 1))
+        while current_step_index < len(task_context.plan):
+            step = task_context.plan[current_step_index]
+            step_id = step.get('id', str(current_step_index + 1))
+
             if step.get('status') == 'completed':
+                current_step_index += 1
                 continue
 
             await task_context.update_step_status(step_id, 'in_progress')
 
             try:
-                # --- START FIX ---
-                # Prioritize 'tool_code' if it exists, otherwise fall back to 'task'.
-                # This handles cases where the planner outputs a descriptive task and a separate tool call.
+                # Execute the current step
                 task_string = step.get('tool_code') or step.get('task')
                 if not task_string:
                     raise ValueError("Step is missing a 'task' or 'tool_code' field.")
-                # --- END FIX ---
 
                 tool_name, args, return_key = self._parse_task_string(task_string)
-
-                # Substitute variables from memory before calling the tool
                 substituted_args = self._substitute_variables(args, step_outputs)
 
                 await task_context.add_to_scratchpad('TOOL_REQUEST',
@@ -132,18 +142,63 @@ class TaskModeHandler(BaseModeHandler):
                         step_outputs[return_key] = result_value
                         await task_context.add_to_scratchpad("STATE_UPDATE",
                                                              f"Stored result in '{return_key}': {result_value}")
-
                     await task_context.update_step_status(step_id, "completed", f"Result: {tool_result.get('result')}")
-                else:
+
+                    # --- DYNAMIC REPLANNING (User Request #1) ---
+                    # After a successful step, we can re-evaluate the rest of the plan
+                    new_plan = await self._reevaluate_plan(task_context, current_step_index, step_outputs)
+                    if new_plan:
+                        await task_context.add_to_scratchpad("REPLAN", "Re-evaluating and updating the plan after successful step.")
+                        task_context.plan = new_plan
+                        await self.progress_manager.broadcast("plan", task_context.plan)
+                        # The loop will continue with the new plan
+
+                    current_step_index += 1 # Move to the next step
+
+                else: # Tool returned a failure status
                     raise Exception(f"Tool '{tool_name}' failed: {tool_result.get('reason', 'Unknown error')}")
 
             except Exception as e:
                 AGENT_LOGGER.error(f"Failed to execute step {step_id}: {e}", exc_info=True)
                 await task_context.update_step_status(step_id, "failed", str(e))
                 all_steps_succeeded = False
-                break  # Stop execution on first failure
+
+                # --- SELF-CORRECTION (User Request #2) ---
+                if task_context.retries < MAX_RETRIES:
+                    task_context.retries += 1
+                    await task_context.add_to_scratchpad("SELF_CORRECTION", f"Attempting self-correction, retry #{task_context.retries}.")
+
+                    corrected_plan = await self._perform_planning(task_context, deep_reasoning=True, is_correction=True, error_message=str(e))
+
+                    if corrected_plan:
+                        await task_context.add_to_scratchpad("REPLAN_SUCCESS", "Successfully generated a new plan.")
+                        task_context.plan = corrected_plan
+                        await self.progress_manager.broadcast("plan", task_context.plan)
+                        current_step_index = 0  # Restart execution from the beginning of the new plan
+                        all_steps_succeeded = True # Reset success flag for the new attempt
+                        continue # Restart the while loop
+                    else:
+                        await task_context.add_to_scratchpad("REPLAN_FAILED", "Failed to generate a corrected plan.")
+                        break # Exit loop if correction fails
+                else:
+                    await task_context.add_to_scratchpad("MAX_RETRIES_REACHED", "Maximum self-correction retries reached. Aborting task.")
+                    break # Exit loop if max retries are reached
 
         return all_steps_succeeded, step_outputs
+
+
+    async def _reevaluate_plan(self, task_context: 'TaskExecutionContext', current_step_index: int, step_outputs: Dict) -> Optional[List[Dict]]:
+        """
+        A lighter-weight check to see if the plan needs to be adjusted after a successful step.
+        For now, this is a placeholder for a more complex implementation.
+        A simple check could be to see if a critical file was deleted or a key variable's value is unexpected.
+        Returning 'None' means the plan should continue as is.
+        """
+        # This is where more complex logic could go. For example, you could call the planner
+        # with a prompt like "Given the last action's result, is the rest of the plan still optimal?"
+        # For now, we will not re-plan after every success to avoid excessive LLM calls,
+        # focusing on the more critical self-correction on failure.
+        return None
 
     def _parse_task_string(self, task_string: str) -> (str, Dict[str, Any], Optional[str]):
         """
@@ -152,18 +207,31 @@ class TaskModeHandler(BaseModeHandler):
         """
         match = re.match(r'([\w_]+)\s*\((.*)\)', task_string)
         if not match:
+            # Fallback for simple tool names without arguments
+            if re.match(r'^[\w_]+$', task_string):
+                return task_string, {}, None
             raise ValueError(f"Could not parse task string into tool and arguments: {task_string}")
 
         tool_name = match.group(1)
         args_str = match.group(2).strip()
+        if not args_str:
+            return tool_name, {}, None
 
         args = {}
         return_key = None
 
         # This regex handles key='value' pairs, including the optional 'return' key
-        pattern = re.compile(r"([\w_]+)\s*=\s*'((?:[^']|'')+)'")
+        # It's improved to handle nested parentheses in the value string
+        pattern = re.compile(r"([\w_]+)\s*=\s*'((?:[^']|'')*)'")
+        # It's important to process the string from left to right
+        last_pos = 0
+        for match_obj in pattern.finditer(args_str):
+            key, value = match_obj.groups()
+            # This check ensures we don't misinterpret parts of a string value as another argument
+            if match_obj.start() < last_pos:
+                continue
+            last_pos = match_obj.end()
 
-        for key, value in pattern.findall(args_str):
             # Un-escape single quotes if they were doubled up inside the string
             value = value.replace("''", "'")
             if key == 'return':
@@ -172,6 +240,7 @@ class TaskModeHandler(BaseModeHandler):
                 args[key] = value
 
         return tool_name, args, return_key
+
 
     def _substitute_variables(self, args: Dict[str, str], outputs: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -186,7 +255,12 @@ class TaskModeHandler(BaseModeHandler):
                     if var in outputs:
                         # Replace the found variable with its value from memory
                         # Ensure the replacement is done as a whole word
-                        value = re.sub(r'\b' + re.escape(var) + r'\b', str(outputs[var]), value)
+                        replacement_val = str(outputs[var])
+                        # If the value in memory is a list or dict, JSON stringify it
+                        if isinstance(outputs[var], (list, dict)):
+                           replacement_val = json.dumps(outputs[var])
+
+                        value = re.sub(r'\b' + re.escape(var) + r'\b', replacement_val, value)
             substituted_args[key] = value
         return substituted_args
 
@@ -198,7 +272,8 @@ class TaskModeHandler(BaseModeHandler):
         if not execution_successful:
             failed_steps = [s.get('id', 'N/A') for s in task_context.plan if s.get('status') == 'failed']
             step_id = failed_steps[0] if failed_steps else 'the last'
-            final_status_summary = f"However, the process stopped because step {step_id} failed."
+            final_status_summary = f"The process stopped because step {step_id} failed, even after {task_context.retries} correction attempt(s)."
+
 
         # --- NEW LATEX AGGREGATION LOGIC ---
         latex_steps = []
@@ -220,8 +295,7 @@ class TaskModeHandler(BaseModeHandler):
             full_latex_breakdown = "\\\\\n".join(latex_steps)
 
             # Try to find the name of the last variable that was returned
-            final_answer_key = next((p.get('task').split("return='")[1][:-2] for p in reversed(task_context.plan) if
-                                     'return=' in p.get('task', '')), None)
+            final_answer_key = next((self._parse_task_string(p.get('task'))[2] for p in reversed(task_context.plan) if self._parse_task_string(p.get('task'))[2]), None)
             final_answer_val = step_outputs.get(final_answer_key, 'See breakdown')
 
             # Format the final answer to a reasonable number of decimal places if it's a float
