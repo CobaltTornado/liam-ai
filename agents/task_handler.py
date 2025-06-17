@@ -189,28 +189,48 @@ class TaskModeHandler(BaseModeHandler):
 
         final_status_summary = "All steps were completed successfully."
         if not execution_successful:
-            failed_steps = [s['id'] for s in task_context.plan if s.get('status') == 'failed']
-            final_status_summary = f"However, the process stopped because step {failed_steps[0]} failed." if failed_steps else "However, the task failed to complete."
+            failed_steps = [s.get('id', 'N/A') for s in task_context.plan if s.get('status') == 'failed']
+            step_id = failed_steps[0] if failed_steps else 'the last'
+            final_status_summary = f"However, the process stopped because step {step_id} failed."
 
-        # Check if a LaTeX breakdown is available from the physics handler
-        if execution_successful and 'latex_breakdown' in step_outputs:
-            # If we have a latex breakdown, format it nicely for the user
-            final_answer = step_outputs.get('acceleration', 'Not found')  # Or whatever the final variable is named
+        # --- NEW LATEX AGGREGATION LOGIC ---
+        latex_steps = []
+        if execution_successful:
+            for i, step in enumerate(task_context.plan):
+                # Ensure we don't go out of bounds if execution stopped early
+                if i >= len(task_context.execution_summary):
+                    break
+                summary_entry = task_context.execution_summary[i]
+                tool_result = summary_entry.get("result", {})
+                if tool_result.get("status") == "success" and "latex_representation" in tool_result:
+                    reasoning = step.get("reasoning", "Calculate next step")
+                    latex_formula = tool_result.get("latex_representation")
+                    # Format as a LaTeX comment and a formula for display
+                    latex_steps.append(f"% {i + 1}. {reasoning}\n\\rightarrow {latex_formula}")
 
-            response_parts = [
-                "Great news! I've successfully solved the physics problem for you. Here is the step-by-step breakdown:\n\n",
-                "```latex\n",
-                step_outputs['latex_breakdown'],
-                "\n```\n\n",
-                f"The final calculated acceleration of the block is approximately **{final_answer:.2f} m/s²**."
-            ]
+        if latex_steps:
+            # Join all LaTeX steps with a double backslash for new lines in display mode
+            full_latex_breakdown = "\\\\\n".join(latex_steps)
 
-            for part in response_parts:
-                await self.progress_manager.broadcast("chat_chunk", part)
-                await asyncio.sleep(0.05)  # Small delay for streaming effect
+            # Try to find the name of the last variable that was returned
+            final_answer_key = next((p.get('task').split("return='")[1][:-2] for p in reversed(task_context.plan) if
+                                     'return=' in p.get('task', '')), None)
+            final_answer_val = step_outputs.get(final_answer_key, 'See breakdown')
 
+            # Format the final answer to a reasonable number of decimal places if it's a float
+            try:
+                final_answer = f"{float(final_answer_val):.2f}"
+            except (ValueError, TypeError):
+                final_answer = str(final_answer_val)
+
+            await self.progress_manager.broadcast("chat_chunk",
+                                                  "I've solved the problem step-by-step. Here is the mathematical breakdown:")
+            await self.progress_manager.broadcast("latex_canvas", full_latex_breakdown)
+            await self.progress_manager.broadcast("chat_chunk",
+                                                  f"\nBased on the steps above, the final result for **{final_answer_key}** is: **{final_answer}**")
+        # --- END NEW LOGIC ---
         else:
-            # Fallback to the original summary method if no LaTeX is available or if the task failed
+            # Fallback to original summary logic if no LaTeX was generated
             execution_summary = task_context.get_formatted_summary()
             summary_prompt = (
                 f"You just attempted to solve this problem: '{task_context.original_prompt}'.\n\n"
