@@ -5,6 +5,8 @@ import logging
 from flask import Flask, render_template, request, jsonify
 from flask_sock import Sock
 from main_agent import ChiefArchitectAgent, ProgressManager
+import google.generativeai as genai
+import base64
 from request_logger import RequestLogger  # Import the new logger
 
 # --- Global State ---
@@ -35,6 +37,28 @@ werkzeug_logger.info = werkzeug_log_interceptor
 # --- Global Agent State ---
 progress_manager = ProgressManager()
 agent_thread = None
+
+
+def call_gemini(prompt_text, image_data):
+    """Send prompt and optional image to Gemini 2.5 Pro and return text."""
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        return "Gemini API key not configured."
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-1.5-pro-latest")
+    try:
+        if image_data:
+            image_bytes = base64.b64decode(image_data)
+            response = model.generate_content([
+                prompt_text,
+                genai.types.content.Image(data=image_bytes, mime_type="image/png"),
+            ])
+        else:
+            response = model.generate_content(prompt_text)
+        return response.text
+    except Exception as e:
+        app.logger.error(f"Gemini request failed: {e}")
+        return f"Error contacting Gemini: {e}"
 
 
 # --- Agent Lifecycle Management ---
@@ -71,6 +95,7 @@ def chat():
     prompt = data.get('prompt')
     image_data = data.get('image_data')
     deep_reasoning = data.get('deep_reasoning', False)
+    non_agent_mode = data.get('non_agent_mode', False)
 
     if not prompt and not image_data:
         err_msg = "Prompt or image is required."
@@ -78,11 +103,18 @@ def chat():
         current_request_logger.save()
         return jsonify({"error": err_msg}), 400
 
-    if agent_thread and agent_thread.is_alive():
+    if not non_agent_mode and agent_thread and agent_thread.is_alive():
         err_msg = "Agent is already running. Please wait."
         current_request_logger.log(f"Request failed: {err_msg}", "App")
         current_request_logger.save()
         return jsonify({"status": err_msg}), 429
+
+    if non_agent_mode:
+        current_request_logger.log("Processing request via Gemini.", "App")
+        result = call_gemini(prompt, image_data)
+        current_request_logger.log("Finished Gemini request.", "App")
+        current_request_logger.save()
+        return jsonify({"result": result})
 
     current_request_logger.log("Starting background agent thread.", "App")
     # Pass the logger instance to the agent's execution thread

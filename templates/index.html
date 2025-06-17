@@ -2,40 +2,98 @@
 <html lang="en" class="dark">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Agentic AI Companion</title>
+
+    <!-- TailwindCSS & Icons -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" xintegrity="sha384-n8MVd4RsNIU0KOVEMeaPoAbbGgf4nHuyzNZkSf+dQAIoq3IWxVLBkyEYCFs9UcVV" crossorigin="anonymous">
-    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" xintegrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- KaTeX -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0KOVEMeaPoAbbGgf4nHuyzNZkSf+dQAIoq3IWxVLBkyEYCFs9UcVV" crossorigin="anonymous" />
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
 
     <style>
+        /* -------- Base styling -------- */
         body {
             font-family: 'Inter', sans-serif;
             background-color: #030712;
-            background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0);
+            background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0);
             background-size: 2rem 2rem;
         }
+
         .glass-panel {
             background: rgba(17, 24, 39, 0.6);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
-        .status-pending .icon { color: #6b7280; }
-        .status-in_progress .icon { color: #3b82f6; animation: spin 1s linear infinite; }
-        .status-completed .icon { color: #22c55e; }
-        .status-failed .icon { color: #ef4444; }
-        .toggle-checkbox:checked { right: 0; border-color: #3b82f6; }
-        .toggle-checkbox:checked + .toggle-label { background-color: #3b82f6; }
-        .log-entry, .chat-bubble, .reasoning-bubble, .latex-canvas, .code-update-bubble { animation: fadeIn 0.5s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        /* -------- Status colours -------- */
+        .status-pending .icon {
+            color: #6b7280;
+        }
+
+        .status-in_progress .icon {
+            color: #3b82f6;
+            animation: spin 1s linear infinite;
+        }
+
+        .status-completed .icon {
+            color: #22c55e;
+        }
+
+        .status-failed .icon {
+            color: #ef4444;
+        }
+
+        /* -------- Toggles -------- */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #3b82f6;
+        }
+
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #3b82f6;
+        }
+
+        /* -------- Animations -------- */
+        .log-entry,
+        .chat-bubble,
+        .reasoning-bubble,
+        .latex-canvas,
+        .code-update-bubble {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
         .blinking-cursor {
             display: inline-block;
             width: 8px;
@@ -43,74 +101,132 @@
             background-color: #9ca3af;
             animation: blink 1s step-end infinite;
         }
-        @keyframes blink { 50% { opacity: 0; } }
-        .katex-display { margin: 0; padding: 1rem; }
+
+        @keyframes blink {
+            50% {
+                opacity: 0;
+            }
+        }
+
+        .katex-display {
+            margin: 0;
+            padding: 1rem;
+        }
+
+        /* -------- Minimal & Non‑agent modes -------- */
         body.minimal-mode {
             font-size: 0.75rem;
         }
-        body.minimal-mode #status-panel { display: none; }
-        body.minimal-mode #main-container { grid-template-columns: 1fr !important; }
-        body.minimal-mode textarea { min-height: 60px; }
+
+        body.minimal-mode #status-panel {
+            display: none;
+        }
+
+        body.minimal-mode #main-container {
+            grid-template-columns: 1fr !important;
+        }
+
+        body.minimal-mode textarea {
+            min-height: 60px;
+        }
+
+        body.non-agent-mode #plan-container,
+        body.non-agent-mode #status-panel {
+            display: none;
+        }
     </style>
 </head>
 
 <body class="text-gray-200 flex flex-col h-screen">
-
+    <!-- ===================================================== -->
+    <!-- Header                                                -->
+    <!-- ===================================================== -->
     <header class="p-4 text-center">
         <h1 class="text-3xl font-bold text-white">Agentic AI Companion</h1>
-        <p class="text-md text-gray-400">A multi-modal interface for complex AI task execution.</p>
-        <div class="flex items-center justify-center mt-2 space-x-2">
-            <span class="text-sm text-gray-300">Minimal Mode</span>
-            <label class="relative inline-block w-10 align-middle select-none">
-                <input type="checkbox" id="minimal-toggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-                <span class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-600"></span>
-            </label>
+        <p class="text-md text-gray-400">A multi‑modal interface for complex AI task execution.</p>
+
+        <div class="flex items-center justify-center mt-3 space-x-6">
+            <!-- Minimal mode toggle -->
+            <div class="flex items-center space-x-2">
+                <span class="text-sm text-gray-300">Minimal Mode</span>
+                <label class="relative inline-block w-10 align-middle select-none">
+                    <input type="checkbox" id="minimal-toggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
+                    <span class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-600"></span>
+                </label>
+            </div>
+
+            <!-- Non‑agent mode toggle -->
+            <div class="flex items-center space-x-2">
+                <span class="text-sm text-gray-300">Non‑Agent Mode</span>
+                <label class="relative inline-block w-10 align-middle select-none">
+                    <input type="checkbox" id="non-agent-toggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
+                    <span class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-600"></span>
+                </label>
+            </div>
         </div>
     </header>
 
+    <!-- ===================================================== -->
+    <!-- Main grid                                             -->
+    <!-- ===================================================== -->
     <main id="main-container" class="flex-grow container mx-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden">
-
+        <!-- -------- Left column (chat + logs) -------- -->
         <div class="lg:col-span-2 flex flex-col gap-6 overflow-hidden">
+            <!-- ----- Chat panel ----- -->
             <div class="glass-panel rounded-xl shadow-2xl p-6">
                 <form id="chat-form" class="flex flex-col space-y-4">
                     <div>
                         <label for="prompt-input" class="block text-sm font-medium text-gray-300 mb-2">Your Request</label>
+
+                        <!-- Image preview -->
                         <div id="image-preview-container" class="hidden relative w-32 h-32 mb-2 rounded-md overflow-hidden">
-                            <img id="image-preview" class="w-full h-full object-cover">
+                            <img id="image-preview" class="w-full h-full object-cover" />
                             <button id="remove-image-btn" type="button" class="absolute top-1 right-1 bg-red-500/80 text-white rounded-full p-1 leading-none">&times;</button>
                         </div>
+
+                        <!-- Prompt textarea -->
                         <textarea id="prompt-input" class="w-full p-3 bg-gray-900/50 border border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow duration-200 placeholder-gray-400 min-h-[120px]" placeholder="e.g., 'Solve the integral of x^2' or paste an image..."></textarea>
                     </div>
+
                     <div class="flex items-center justify-between">
-                         <div class="flex items-center gap-4">
+                        <div class="flex items-center gap-4">
                             <label for="image-upload-button" class="inline-flex items-center px-4 py-2 bg-gray-600 text-white font-semibold text-sm rounded-md hover:bg-gray-700 cursor-pointer transition-colors">
                                 <i class="ph ph-image mr-2"></i>
                                 Attach Image
                             </label>
-                            <input type="file" id="image-upload-button" class="hidden" accept="image/*">
-                         </div>
+                            <input type="file" id="image-upload-button" class="hidden" accept="image/*" />
+                        </div>
+
                         <button type="submit" id="submit-button" class="inline-flex items-center px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500 transition-colors duration-200 disabled:bg-gray-500 disabled:cursor-not-allowed">
                             <i class="ph ph-paper-plane-tilt mr-2"></i>Execute
                         </button>
                     </div>
                 </form>
             </div>
+
+            <!-- ----- Log panel ----- -->
             <div class="glass-panel rounded-xl shadow-2xl flex-grow flex flex-col overflow-hidden">
-                <h2 class="text-lg font-semibold p-4 border-b border-gray-700/50 flex items-center"><i class="ph ph-terminal-window mr-2"></i>Execution Log</h2>
+                <h2 class="text-lg font-semibold p-4 border-b border-gray-700/50 flex items-center">
+                    <i class="ph ph-terminal-window mr-2"></i>Execution Log
+                </h2>
                 <div id="logs-container" class="flex-grow p-4 space-y-3 overflow-y-auto">
-                    <p class="text-gray-400 text-center py-8 initial-message">Waiting for agent to start...</p>
+                    <p class="text-gray-400 text-center py-8 initial-message">Waiting for agent to start…</p>
                 </div>
+
                 <div id="result-container" class="p-4 border-t border-gray-700/50 bg-gray-900/30 hidden">
-                    <h3 class="font-semibold text-lg mb-2 text-white flex items-center"><i class="ph ph-check-circle mr-2 text-green-400"></i>Final Result</h3>
+                    <h3 class="font-semibold text-lg mb-2 text-white flex items-center">
+                        <i class="ph ph-check-circle mr-2 text-green-400"></i>Final Result
+                    </h3>
                     <p id="final-result" class="text-gray-300 whitespace-pre-wrap"></p>
                 </div>
             </div>
         </div>
 
+        <!-- -------- Right column (status & plan) -------- -->
         <div id="status-panel" class="glass-panel rounded-xl shadow-2xl flex flex-col overflow-hidden">
             <div class="p-4 border-b border-gray-700/50">
-                 <h2 class="text-lg font-semibold flex items-center"><i class="ph ph-list-checks mr-2"></i>Agent Status</h2>
-                 <div id="status-indicator" class="mt-2 text-center p-2 rounded-md bg-gray-700 text-gray-300">Idle</div>
+                <h2 class="text-lg font-semibold flex items-center"><i class="ph ph-list-checks mr-2"></i>Agent Status</h2>
+                <div id="status-indicator" class="mt-2 text-center p-2 rounded-md bg-gray-700 text-gray-300">Idle</div>
             </div>
             <div id="plan-container" class="flex-grow p-4 space-y-3 overflow-y-auto">
                 <div class="text-center text-gray-400 py-8 initial-message">
@@ -121,7 +237,11 @@
         </div>
     </main>
 
+    <!-- ===================================================== -->
+    <!-- Scripts                                               -->
+    <!-- ===================================================== -->
     <script>
+        /* ----------------- DOM handles ----------------- */
         const ui = {
             planContainer: document.getElementById('plan-container'),
             logsContainer: document.getElementById('logs-container'),
@@ -135,21 +255,24 @@
             imagePreview: document.getElementById('image-preview'),
             removeImageBtn: document.getElementById('remove-image-btn'),
             statusIndicator: document.getElementById('status-indicator'),
-            minimalToggle: document.getElementById('minimal-toggle')
+            minimalToggle: document.getElementById('minimal-toggle'),
+            nonAgentToggle: document.getElementById('non-agent-toggle'),
         };
 
+        /* ----------------- Globals ----------------- */
         let attachedImageBase64 = null;
 
         const statusConfig = {
             Idle: { text: 'Idle', class: 'bg-gray-700 text-gray-300' },
-            Chatting: { text: 'Chatting...', class: 'bg-teal-600/50 text-teal-200' },
-            Physics: { text: 'Solving Physics...', class: 'bg-purple-600/50 text-purple-200' },
-            Planning: { text: 'Planning...', class: 'bg-yellow-600/50 text-yellow-200' },
-            Executing: { text: 'Executing...', class: 'bg-blue-600/50 text-blue-200' },
+            Chatting: { text: 'Chatting…', class: 'bg-teal-600/50 text-teal-200' },
+            Physics: { text: 'Solving Physics…', class: 'bg-purple-600/50 text-purple-200' },
+            Planning: { text: 'Planning…', class: 'bg-yellow-600/50 text-yellow-200' },
+            Executing: { text: 'Executing…', class: 'bg-blue-600/50 text-blue-200' },
             Completed: { text: 'Completed', class: 'bg-green-600/50 text-green-200' },
-            Failed: { text: 'Failed', class: 'bg-red-600/50 text-red-200' }
+            Failed: { text: 'Failed', class: 'bg-red-600/50 text-red-200' },
         };
 
+        /* ----------------- WebSocket ----------------- */
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
@@ -158,6 +281,7 @@
             ws.onerror = (err) => console.error('WebSocket error:', err);
         }
 
+        /* ----------------- WebSocket handlers ----------------- */
         function handleWebSocketMessage(event) {
             const data = JSON.parse(event.data);
             switch (data.type) {
@@ -188,30 +312,31 @@
 
         function handleFinalResult(payload) {
             clearReasoning();
-            const isFailure = payload.includes('failed');
-            const status = isFailure ? 'Failed' : 'Completed';
+            const status = payload.includes('failed') ? 'Failed' : 'Completed';
             updateAgentStatus(status);
 
+            // Only show the fancy box for non‑streamed modes
             if (!payload.includes('Chat') && !payload.includes('Physics')) {
                 showResultBox(payload, status);
             }
             ui.submitButton.disabled = false;
         }
 
+        /* ----------------- UI helpers ----------------- */
         function clearInitialMessages() {
-            document.querySelectorAll('.initial-message').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.initial-message').forEach((el) => (el.style.display = 'none'));
         }
 
         function clearReasoning() {
-            const reasoningBubble = document.getElementById('reasoning-bubble');
-            if (reasoningBubble) {
-                if (reasoningBubble.dataset.type === 'chat_chunk') {
-                    reasoningBubble.id = '';
-                    const cursor = reasoningBubble.querySelector('.blinking-cursor');
-                    if (cursor) cursor.remove();
-                } else {
-                    reasoningBubble.remove();
-                }
+            const bubble = document.getElementById('reasoning-bubble');
+            if (!bubble) return;
+
+            if (bubble.dataset.type === 'chat_chunk') {
+                bubble.id = '';
+                const cursor = bubble.querySelector('.blinking-cursor');
+                if (cursor) cursor.remove();
+            } else {
+                bubble.remove();
             }
         }
 
@@ -229,11 +354,11 @@
         function addLog(source, message, isUser = false) {
             clearReasoning();
             clearInitialMessages();
-            const logEntry = document.createElement('div');
-            logEntry.className = `log-entry flex items-start ${isUser ? 'text-amber-300' : 'text-gray-300'}`;
+            const el = document.createElement('div');
+            el.className = `log-entry flex items-start ${isUser ? 'text-amber-300' : 'text-gray-300'}`;
             const icon = isUser ? 'ph-user-circle' : 'ph-robot';
-            logEntry.innerHTML = `<i class="ph ${icon} text-lg mr-3 mt-1"></i><span class="flex-1">${message.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span>`;
-            ui.logsContainer.appendChild(logEntry);
+            el.innerHTML = `<i class="ph ${icon} text-lg mr-3 mt-1"></i><span class="flex-1">${message.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`;
+            ui.logsContainer.appendChild(el);
             ui.logsContainer.scrollTop = ui.logsContainer.scrollHeight;
         }
 
@@ -246,9 +371,10 @@
                 bubble.dataset.type = type;
                 bubble.className = 'reasoning-bubble flex items-start';
 
-                const iconHtml = type === 'chat_chunk'
-                    ? '<i class="ph ph-robot-fill text-3xl mr-3 text-cyan-400"></i>'
-                    : '<i class="ph ph-brain text-3xl mr-3 text-purple-400"></i>';
+                const iconHtml =
+                    type === 'chat_chunk'
+                        ? '<i class="ph ph-robot-fill text-3xl mr-3 text-cyan-400"></i>'
+                        : '<i class="ph ph-brain text-3xl mr-3 text-purple-400"></i>';
 
                 bubble.innerHTML = `<div class="flex-1 bg-gray-700/50 p-3 rounded-lg"><p class="whitespace-pre-wrap"></p></div>`;
                 const iconWrapper = document.createElement('div');
@@ -259,7 +385,7 @@
             }
             const p = bubble.querySelector('p');
             const cursor = p.querySelector('.blinking-cursor');
-            if(cursor) cursor.remove();
+            if (cursor) cursor.remove();
 
             p.textContent += chunk;
             p.innerHTML += '<span class="blinking-cursor"></span>';
@@ -268,65 +394,77 @@
 
         function addLatexCanvas(latexString) {
             clearReasoning();
-            const canvasContainer = document.createElement('div');
-            canvasContainer.className = 'latex-canvas flex items-start';
+            const wrapper = document.createElement('div');
+            wrapper.className = 'latex-canvas flex items-start';
 
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'flex-1 bg-gray-900/70 p-4 rounded-lg border border-gray-600';
-
+            const content = document.createElement('div');
+            content.className = 'flex-1 bg-gray-900/70 p-4 rounded-lg border border-gray-600';
             try {
-                katex.render(latexString, contentDiv, {
-                    throwOnError: false,
-                    displayMode: true
-                });
+                katex.render(latexString, content, { throwOnError: false, displayMode: true });
             } catch (e) {
-                console.error("KaTeX rendering error:", e);
-                contentDiv.textContent = "Error rendering LaTeX: " + latexString;
+                console.error('KaTeX rendering error:', e);
+                content.textContent = 'Error rendering LaTeX: ' + latexString;
             }
 
-            canvasContainer.innerHTML = '<i class="ph ph-function text-3xl mr-3 text-green-400"></i>';
-            canvasContainer.appendChild(contentDiv);
-            ui.logsContainer.appendChild(canvasContainer);
+            wrapper.innerHTML = '<i class="ph ph-function text-3xl mr-3 text-green-400"></i>';
+            wrapper.appendChild(content);
+            ui.logsContainer.appendChild(wrapper);
             ui.logsContainer.scrollTop = ui.logsContainer.scrollHeight;
         }
 
         function updatePlan(plan) {
             ui.planContainer.innerHTML = '';
-            if (!plan || plan.length === 0) return;
-            plan.forEach(step => {
+            if (!plan || !plan.length) return;
+
+            plan.forEach((step) => {
                 const status = step.status || 'pending';
-                const iconClass = { pending: 'ph-circle-dashed', in_progress: 'ph-spinner', completed: 'ph-check-circle', failed: 'ph-x-circle' }[status.toLowerCase()] || 'ph-circle-dashed';
-                const stepEl = document.createElement('div');
-                stepEl.className = `p-3 rounded-lg bg-gray-900/50 transition-all duration-300 status-${status.toLowerCase()}`;
-                stepEl.innerHTML = `<div class="flex items-center font-semibold text-white"><i class="ph ${iconClass} icon text-xl mr-3"></i><span>${step.id}. ${step.task}</span></div><p class="text-sm text-gray-400 mt-1 pl-9 italic">${step.reasoning || ''}</p>${step.detail ? `<p class="text-xs text-green-400 mt-2 pl-9 bg-gray-700/50 p-1 rounded">Detail: ${step.detail}</p>` : ''}`;
-                ui.planContainer.appendChild(stepEl);
+                const iconClass = {
+                    pending: 'ph-circle-dashed',
+                    in_progress: 'ph-spinner',
+                    completed: 'ph-check-circle',
+                    failed: 'ph-x-circle',
+                }[status.toLowerCase()] || 'ph-circle-dashed';
+
+                const el = document.createElement('div');
+                el.className = `p-3 rounded-lg bg-gray-900/50 transition-all duration-300 status-${status.toLowerCase()}`;
+                el.innerHTML = `
+                    <div class="flex items-center font-semibold text-white"><i class="ph ${iconClass} icon text-xl mr-3"></i><span>${step.id}. ${step.task}</span></div>
+                    <p class="text-sm text-gray-400 mt-1 pl-9 italic">${step.reasoning || ''}</p>
+                    ${step.detail ? `<p class="text-xs text-green-400 mt-2 pl-9 bg-gray-700/50 p-1 rounded">Detail: ${step.detail}</p>` : ''}
+                `;
+                ui.planContainer.appendChild(el);
             });
         }
 
-        function updateAgentStatus(statusKey) {
-            const config = statusConfig[statusKey] || statusConfig.Idle;
-            ui.statusIndicator.textContent = config.text;
-            ui.statusIndicator.className = `mt-2 text-center p-2 rounded-md font-semibold transition-all ${config.class}`;
+        function updateAgentStatus(key) {
+            const cfg = statusConfig[key] || statusConfig.Idle;
+            ui.statusIndicator.textContent = cfg.text;
+            ui.statusIndicator.className = `mt-2 text-center p-2 rounded-md font-semibold transition-all ${cfg.class}`;
         }
 
         function showResultBox(result, status) {
             ui.finalResultEl.textContent = result;
-            const icon = status === 'Failed' ? 'ph-warning-circle text-red-400' : 'ph-check-circle text-green-400';
-            ui.resultContainer.querySelector('h3 i').className = `ph ${icon} mr-2`;
+            const iconCls = status === 'Failed' ? 'ph-warning-circle text-red-400' : 'ph-check-circle text-green-400';
+            ui.resultContainer.querySelector('h3 i').className = `ph ${iconCls} mr-2`;
             ui.resultContainer.classList.remove('hidden');
         }
 
         function clearUI() {
             updateAgentStatus('Idle');
             clearReasoning();
-            ui.planContainer.innerHTML = `<div class="text-center text-gray-400 py-8 initial-message"><i class="ph ph-map-trifold text-4xl"></i><p class="mt-2">The agent's plan will appear here.</p></div>`;
-            ui.logsContainer.innerHTML = '<p class="text-gray-400 text-center py-8 initial-message">Waiting for agent to start...</p>';
+            ui.planContainer.innerHTML = `
+                <div class="text-center text-gray-400 py-8 initial-message">
+                    <i class="ph ph-map-trifold text-4xl"></i>
+                    <p class="mt-2">The agent's plan will appear here.</p>
+                </div>`;
+            ui.logsContainer.innerHTML = '<p class="text-gray-400 text-center py-8 initial-message">Waiting for agent to start…</p>';
             ui.resultContainer.classList.add('hidden');
             ui.imageUploadButton.value = '';
             attachedImageBase64 = null;
             ui.imagePreviewContainer.classList.add('hidden');
         }
 
+        /* ----------------- Event listeners ----------------- */
         ui.imageUploadButton.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) processAndDisplayImage(file);
@@ -336,8 +474,7 @@
             const items = (e.clipboardData || window.clipboardData).items;
             for (const item of items) {
                 if (item.type.indexOf('image') !== -1) {
-                    const file = item.getAsFile();
-                    processAndDisplayImage(file);
+                    processAndDisplayImage(item.getAsFile());
                     e.preventDefault();
                     return;
                 }
@@ -345,9 +482,9 @@
         });
 
         ui.removeImageBtn.addEventListener('click', () => {
-             ui.imageUploadButton.value = '';
-             attachedImageBase64 = null;
-             ui.imagePreviewContainer.classList.add('hidden');
+            ui.imageUploadButton.value = '';
+            attachedImageBase64 = null;
+            ui.imagePreviewContainer.classList.add('hidden');
         });
 
         ui.chatForm.addEventListener('submit', async (e) => {
@@ -355,28 +492,33 @@
             const prompt = ui.promptInput.value.trim();
             if (!prompt && !attachedImageBase64) return;
 
-            // --- FIX START ---
-            // Capture the image data into a local variable *before* the UI is cleared.
-            const imageToSend = attachedImageBase64;
-            // --- FIX END ---
+            const imageToSend = attachedImageBase64; // capture before clear
 
             clearUI();
             ui.submitButton.disabled = true;
             addLog('User', `Tasking agent with: "${prompt || 'Image Analysis'}"`, true);
 
             try {
-                const response = await fetch('/chat', {
+                const res = await fetch('/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        prompt: prompt,
-                        // Use the captured variable, which holds the image data.
-                        image_data: imageToSend
+                        prompt,
+                        image_data: imageToSend,
+                        non_agent_mode: ui.nonAgentToggle.checked,
                     }),
                 });
-                if (!response.ok) throw new Error((await response.json()).status || 'Failed to start agent.');
-            } catch (error) {
-                addLog('System', `Error: ${error.message}`);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.status || 'Failed to start agent.');
+
+                // Immediate response when non‑agent mode returns a result directly
+                if (ui.nonAgentToggle.checked && data.result) {
+                    addLog('Agent', data.result);
+                    showResultBox(data.result, 'Completed');
+                    ui.submitButton.disabled = false;
+                }
+            } catch (err) {
+                addLog('System', `Error: ${err.message}`);
                 updateAgentStatus('Failed');
                 ui.submitButton.disabled = false;
             }
@@ -386,7 +528,13 @@
             document.body.classList.toggle('minimal-mode', ui.minimalToggle.checked);
         });
 
+        ui.nonAgentToggle.addEventListener('change', () => {
+            document.body.classList.toggle('non-agent-mode', ui.nonAgentToggle.checked);
+        });
+
+        /* ----------------- Start ----------------- */
         connectWebSocket();
     </script>
 </body>
+
 </html>

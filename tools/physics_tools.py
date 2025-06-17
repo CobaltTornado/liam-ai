@@ -1,227 +1,235 @@
+"""physics_tool_v2_cleaned.py
+--------------------------------------------------
+Symbolic‑ and vector‑math helpers for the agentic tool‑chain.
+This version removes merge‑conflict artefacts, unifies duplicate blocks, and
+adds full type hints + defensive logging.
+
+Public API
+~~~~~~~~~~
+* ``symbolic_manipulation`` – solve/differentiate/integrate/simplify/etc.
+* ``vector_operation``       – dot, cross, scalar multiplication, magnitude,
+                               normalization.
+"""
+from __future__ import annotations
+
 import logging
-import sympy
-from sympy import sympify, solve, diff, integrate, symbols, Matrix, latex, SympifyError
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
+from sympy import (
+    Matrix,
+    SympifyError,
+    diff,
+    integrate,
+    latex,
+    solve,
+    sympify,
+    symbols,
+)
 
-# --- Logging Setup ---
+__all__ = ["symbolic_manipulation", "vector_operation"]
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
 PHYSICS_LOGGER = logging.getLogger("PhysicsToolV2")
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
 
-# --- Helper Function ---
-def _prepare_return_dict(status: str, result: any = None, reason: str = None, latex: str = None, reasoning: str = None) -> Dict:
-    """Formats the standard return dictionary for all tool functions."""
-    response = {"status": status}
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _prepare_return_dict(
+    status: str,
+    *,
+    result: Any | None = None,
+    reason: str | None = None,
+    latex_repr: str | None = None,
+    reasoning: str | None = None,
+) -> Dict[str, Any]:
+    """Return a standard response payload."""
+    payload: Dict[str, Any] = {"status": status}
+
     if result is not None:
-        # Handle various result types from SymPy for clean output
-        if isinstance(result, list) and result:
-            # Check if it's a list of solutions
-            response["result"] = [str(item) for item in result]
-        elif hasattr(result, 'tolist'): # Handle Matrix
-             response["result"] = result.tolist()
+        if hasattr(result, "tolist"):
+            payload["result"] = result.tolist()  # Matrix → list‑of‑lists
+        elif isinstance(result, list):
+            payload["result"] = [str(item) for item in result]
         else:
-             response["result"] = str(result)
-    if reason:
-        response["reason"] = reason
-    if latex:
-        response["latex_representation"] = latex
-    if reasoning:
-        response["reasoning"] = reasoning
-    return response
+            payload["result"] = str(result)
 
-# --- Core Tool Functions ---
+    if reason:
+        payload["reason"] = reason
+    if latex_repr:
+        payload["latex_representation"] = latex_repr
+    if reasoning:
+        payload["reasoning"] = reasoning
+    return payload
+
+# ---------------------------------------------------------------------------
+# Symbolic manipulation
+# ---------------------------------------------------------------------------
 
 def symbolic_manipulation(
     expression: str,
     operation: str,
+    *,
     variables: str = "",
     solve_for: Optional[str] = None,
     wrt: Optional[str] = None,
-    at_point: Optional[Dict[str, float]] = None
-) -> Dict:
+    at_point: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
+    """Perform high‑level symbolic math operations.
+
+    Parameters
+    ----------
+    expression : str
+        The expression/equation (e.g. ``"x**2 + y = z"``).
+    operation : str
+        One of ``solve | diff | integrate | simplify | assign | subs``.
+    variables : str, optional
+        Comma‑separated list of symbols present in *expression*.
+    solve_for : str, optional
+        Target symbol when *operation* = ``solve``.
+    wrt : str, optional
+        Variable of differentiation/integration ("with respect to").
+    at_point : dict, optional
+        Mapping for substitution *after* the main operation.
     """
-    Performs symbolic math operations like solving, differentiation, and integration.
+    PHYSICS_LOGGER.info("%s → %s", operation, expression)
 
-    Args:
-        expression (str): The mathematical expression or equation string (e.g., "x**2 + y = z").
-        operation (str): The operation to perform. One of ['solve', 'diff', 'integrate', 'simplify', 'subs'].
-        variables (str): A comma-separated string of all variables in the expression (e.g., "x,y,z").
-        solve_for (str, optional): The variable to solve for if operation is 'solve'.
-        wrt (str, optional): "With respect to" variable for differentiation ('diff') or integration ('integrate').
-        at_point (Dict[str, float], optional): A dictionary to substitute variables with numerical values after the operation.
-
-    Returns:
-        Dict: A dictionary with the result as a string and its LaTeX representation.
-    """
-    PHYSICS_LOGGER.info(f"Performing '{operation}' on '{expression}'")
     try:
-        # Define symbolic variables from the comma-separated string
-        syms = symbols(variables) if variables else ()
-        if not isinstance(syms, (list, tuple)): # <-- FIX: Ensure syms is always a tuple
-            syms = (syms,)
-        expr = sympify(expression, locals={s.name: s for s in syms})
-        reasoning_text = ""
-        result = None
-
-        if operation == 'solve':
-            if not solve_for:
-                return _prepare_return_dict("error", reason="'solve_for' is required for 'solve' operation.")
-            target_symbol = symbols(solve_for)
-            if not isinstance(target_symbol, tuple):
-                target_symbol = (target_symbol,)
-            solution = solve(expr, *target_symbol)
-            result = solution
-            reasoning_text = f"Solved the expression for {solve_for}."
-        elif operation == 'diff':
-            if not wrt:
-                return _prepare_return_dict("error", reason="'wrt' is required for 'diff' operation.")
-            diff_var = symbols(wrt)
-            result = diff(expr, diff_var)
-            reasoning_text = f"Differentiated the expression with respect to {wrt}."
-        elif operation == 'integrate':
-            if not wrt:
-                return _prepare_return_dict("error", reason="'wrt' is required for 'integrate' operation.")
-            int_var = symbols(wrt)
-            result = integrate(expr, int_var)
-            reasoning_text = f"Integrated the expression with respect to {wrt}."
-        elif operation == 'simplify':
-            result = expr.simplify()
-            reasoning_text = "Simplified the expression."
-        elif operation == 'assign':
-            # Simple assignment of a numeric value to a variable
-            if len(syms) != 1:
-                return _prepare_return_dict("error", reason="'assign' requires exactly one variable")
-            value = sympify(expression)
-            reasoning_text = f"Assigned the value {value} to {syms[0]}"
-            return _prepare_return_dict("success", result={syms[0].name: float(value)}, reasoning=reasoning_text)
-        elif operation == 'subs':
-             if not at_point:
-                return _prepare_return_dict("error", reason="'at_point' is required for 'subs' operation.")
-             result = expr.subs(at_point)
-             reasoning_text = f"Substituted the variables with the values in {at_point}."
-        else:
-            return _prepare_return_dict("error", reason=f"Unknown operation: {operation}")
-
-        if at_point and operation != 'subs':
-            result_at_point = result.subs(at_point) if hasattr(result, 'subs') else result
-            reasoning_text += f" Then, substituted the point {at_point} into the result."
-            return _prepare_return_dict("success", result=float(result_at_point), latex=latex(result_at_point), reasoning=reasoning_text)
-
-        return _prepare_return_dict("success", result=result, latex=latex(result), reasoning=reasoning_text)
-
-    except (SympifyError, TypeError, ValueError, Exception) as e:
-        error_message = f"Symbolic manipulation failed: {e}"
-        PHYSICS_LOGGER.error(error_message, exc_info=True)
-        return _prepare_return_dict("error", reason=error_message)
-
-    PHYSICS_LOGGER.info(f"Performing '{operation}' on '{expression}'")
-    try:
-        # Define symbolic variables from the comma-separated string
         syms = symbols(variables) if variables else ()
         if not isinstance(syms, (list, tuple)):
             syms = (syms,)
-        expr = sympify(expression, locals={s.name: s for s in syms})
-        reasoning_text = ""
-        result = None
+        local_dict = {s.name: s for s in syms}
+        expr = sympify(expression, locals=local_dict)
 
-        if operation == 'solve':
-            if not solve_for:
-                return _prepare_return_dict("error", reason="'solve_for' is required for 'solve' operation.")
-            target_symbol = symbols(solve_for)
-            if not isinstance(target_symbol, tuple):
-                target_symbol = (target_symbol,)
-            solution = solve(expr, *target_symbol)
-            result = solution
-            reasoning_text = f"Solved the expression for {solve_for}."
-        elif operation == 'diff':
-            if not wrt:
-                return _prepare_return_dict("error", reason="'wrt' is required for 'diff' operation.")
-            diff_var = symbols(wrt)
-            result = diff(expr, diff_var)
-            reasoning_text = f"Differentiated the expression with respect to {wrt}."
-        elif operation == 'integrate':
-            if not wrt:
-                return _prepare_return_dict("error", reason="'wrt' is required for 'integrate' operation.")
-            int_var = symbols(wrt)
-            result = integrate(expr, int_var)
-            reasoning_text = f"Integrated the expression with respect to {wrt}."
-        elif operation == 'simplify':
-            result = expr.simplify()
-            reasoning_text = "Simplified the expression."
-        elif operation == 'assign':
-            # Simple assignment of a numeric value to a variable
-            if len(syms) != 1:
-                return _prepare_return_dict("error", reason="'assign' requires exactly one variable")
-            value = sympify(expression)
-            reasoning_text = f"Assigned the value {value} to {syms[0]}"
-            return _prepare_return_dict("success", result={syms[0].name: float(value)}, reasoning=reasoning_text)
-        elif operation == 'subs':
-             if not at_point:
-                return _prepare_return_dict("error", reason="'at_point' is required for 'subs' operation.")
-             result = expr.subs(at_point)
-             reasoning_text = f"Substituted the variables with the values in {at_point}."
-        else:
-            return _prepare_return_dict("error", reason=f"Unknown operation: {operation}")
+        reasoning = ""
+        result: Any
 
-        if at_point and operation != 'subs':
-            result_at_point = result.subs(at_point) if hasattr(result, 'subs') else result
-            reasoning_text += f" Then, substituted the point {at_point} into the result."
-            return _prepare_return_dict("success", result=float(result_at_point), latex=latex(result_at_point), reasoning=reasoning_text)
+        match operation:
+            case "solve":
+                if not solve_for:
+                    return _prepare_return_dict("error", reason="'solve_for' required")
+                targets = symbols(solve_for)
+                if not isinstance(targets, (list, tuple)):
+                    targets = (targets,)
+                result = solve(expr, *targets)
+                reasoning = f"Solved for {solve_for}."
 
-        return _prepare_return_dict("success", result=result, latex=latex(result), reasoning=reasoning_text)
+            case "diff":
+                if not wrt:
+                    return _prepare_return_dict("error", reason="'wrt' required for diff")
+                result = diff(expr, symbols(wrt))
+                reasoning = f"Differentiated w.r.t {wrt}."
 
-    except (SympifyError, TypeError, ValueError, Exception) as e:
-        error_message = f"Symbolic manipulation failed: {e}"
-        PHYSICS_LOGGER.error(error_message, exc_info=True)
-        return _prepare_return_dict("error", reason=error_message)
+            case "integrate":
+                if not wrt:
+                    return _prepare_return_dict("error", reason="'wrt' required for integrate")
+                result = integrate(expr, symbols(wrt))
+                reasoning = f"Integrated w.r.t {wrt}."
 
-def vector_operation(operation: str, vectors: List[List[float]], scalar: Optional[float] = None) -> Dict:
+            case "simplify":
+                result = expr.simplify()
+                reasoning = "Simplified the expression."
+
+            case "assign":
+                if len(syms) != 1:
+                    return _prepare_return_dict("error", reason="'assign' needs exactly one variable")
+                val = sympify(expression)
+                reasoning = f"Assigned {val} to {syms[0].name}."
+                return _prepare_return_dict("success", result={syms[0].name: float(val)}, reasoning=reasoning)
+
+            case "subs":
+                if not at_point:
+                    return _prepare_return_dict("error", reason="'at_point' required for subs")
+                result = expr.subs(at_point)
+                reasoning = f"Substituted {at_point}."
+
+            case _:
+                return _prepare_return_dict("error", reason=f"Unknown operation: {operation}")
+
+        # Second‑stage substitution if requested
+        if at_point and operation != "subs":
+            substituted = result.subs(at_point) if hasattr(result, "subs") else result
+            reasoning += f" Substituted {at_point}."
+            return _prepare_return_dict(
+                "success",
+                result=float(substituted) if substituted.is_number else substituted,
+                latex_repr=latex(substituted),
+                reasoning=reasoning,
+            )
+
+        return _prepare_return_dict("success", result=result, latex_repr=latex(result), reasoning=reasoning)
+
+    except (SympifyError, ValueError, TypeError) as exc:
+        msg = f"Symbolic manipulation failed: {exc}"
+        PHYSICS_LOGGER.error(msg, exc_info=True)
+        return _prepare_return_dict("error", reason=msg)
+
+# ---------------------------------------------------------------------------
+# Vector operations
+# ---------------------------------------------------------------------------
+
+def vector_operation(
+    operation: str,
+    vectors: List[List[float]],
+    *,
+    scalar: Optional[float] = None,
+) -> Dict[str, Any]:
+    """Perform basic vector algebra.
+
+    operation ∈ {``dot``, ``cross``, ``scalar_mult``, ``magnitude``, ``normalize``}.
     """
-    Performs vector operations like dot product, cross product, and scalar multiplication.
+    PHYSICS_LOGGER.info("Vector op %s on %s", operation, vectors)
 
-    Args:
-        operation (str): The vector operation ('dot', 'cross', 'scalar_mult', 'magnitude', 'normalize').
-        vectors (List[List[float]]): A list containing one or two vectors (e.g., [[1, 2, 3], [4, 5, 6]]).
-        scalar (float, optional): The scalar value for scalar multiplication.
-
-    Returns:
-        Dict: A dictionary containing the resulting vector or scalar value.
-    """
-    PHYSICS_LOGGER.info(f"Performing vector '{operation}' on vectors {vectors}")
     try:
-        vec_matrices = [Matrix(v) for v in vectors]
-        reasoning_text = ""
-        result = None
+        mats = [Matrix(v) for v in vectors]
+        reasoning = ""
+        result: Union[Matrix, float]
 
-        if operation == 'dot':
-            if len(vec_matrices) != 2: return _prepare_return_dict("error", reason="Dot product requires exactly two vectors.")
-            result = vec_matrices[0].dot(vec_matrices[1])
-            reasoning_text = f"Calculated the dot product of the vectors."
-        elif operation == 'cross':
-            if len(vec_matrices) != 2: return _prepare_return_dict("error", reason="Cross product requires exactly two vectors.")
-            if vec_matrices[0].shape[0] != 3 or vec_matrices[1].shape[0] != 3:
-                 return _prepare_return_dict("error", reason="Cross product is only defined for 3D vectors.")
-            result = vec_matrices[0].cross(vec_matrices[1])
-            reasoning_text = "Calculated the cross product of the 3D vectors."
-        elif operation == 'scalar_mult':
-            if len(vec_matrices) != 1 or scalar is None:
-                return _prepare_return_dict("error", reason="Scalar multiplication requires one vector and one scalar.")
-            result = vec_matrices[0] * scalar
-            reasoning_text = f"Multiplied the vector by the scalar {scalar}."
-        elif operation == 'magnitude':
-            if len(vec_matrices) != 1: return _prepare_return_dict("error", reason="Magnitude calculation requires one vector.")
-            result = vec_matrices[0].norm()
-            reasoning_text = "Calculated the magnitude (norm) of the vector."
-        elif operation == 'normalize':
-            if len(vec_matrices) != 1: return _prepare_return_dict("error", reason="Normalization requires one vector.")
-            result = vec_matrices[0].normalized()
-            reasoning_text = "Normalized the vector to unit length."
-        else:
-            return _prepare_return_dict("error", reason=f"Unknown vector operation: {operation}")
+        match operation:
+            case "dot":
+                if len(mats) != 2:
+                    return _prepare_return_dict("error", reason="Dot product needs two vectors")
+                result = mats[0].dot(mats[1])
+                reasoning = "Computed dot product."
 
-        return _prepare_return_dict("success", result=result, latex=latex(result), reasoning=reasoning_text)
+            case "cross":
+                if len(mats) != 2:
+                    return _prepare_return_dict("error", reason="Cross product needs two vectors")
+                if any(m.shape != (3, 1) for m in mats):
+                    return _prepare_return_dict("error", reason="Cross product only for 3D vectors")
+                result = mats[0].cross(mats[1])
+                reasoning = "Computed cross product."
 
-    except Exception as e:
-        error_message = f"Vector operation failed: {e}"
-        PHYSICS_LOGGER.error(error_message, exc_info=True)
-        return _prepare_return_dict("error", reason=error_message)
+            case "scalar_mult":
+                if len(mats) != 1 or scalar is None:
+                    return _prepare_return_dict("error", reason="Provide one vector + scalar")
+                result = mats[0] * scalar
+                reasoning = f"Scaled vector by {scalar}."
+
+            case "magnitude":
+                if len(mats) != 1:
+                    return _prepare_return_dict("error", reason="Magnitude needs one vector")
+                result = mats[0].norm()
+                reasoning = "Computed magnitude."
+
+            case "normalize":
+                if len(mats) != 1:
+                    return _prepare_return_dict("error", reason="Normalization needs one vector")
+                result = mats[0].normalized()
+                reasoning = "Normalized vector."
+
+            case _:
+                return _prepare_return_dict("error", reason=f"Unknown op: {operation}")
+
+        return _prepare_return_dict("success", result=result, latex_repr=latex(result), reasoning=reasoning)
+
+    except Exception as exc:  # pylint: disable=broad-except
+        msg = f"Vector operation failed: {exc}"
+        PHYSICS_LOGGER.error(msg, exc_info=True)
+        return _prepare_return_dict("error", reason=msg)
