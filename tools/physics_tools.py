@@ -1,6 +1,8 @@
 import logging
+import sympy
 from sympy import sympify, solve, diff, integrate, symbols, Matrix, latex, SympifyError
 from typing import Dict, List, Optional
+
 
 # --- Logging Setup ---
 PHYSICS_LOGGER = logging.getLogger("PhysicsToolV2")
@@ -51,6 +53,67 @@ def symbolic_manipulation(
     Returns:
         Dict: A dictionary with the result as a string and its LaTeX representation.
     """
+    PHYSICS_LOGGER.info(f"Performing '{operation}' on '{expression}'")
+    try:
+        # Define symbolic variables from the comma-separated string
+        syms = symbols(variables) if variables else ()
+        if not isinstance(syms, (list, tuple)): # <-- FIX: Ensure syms is always a tuple
+            syms = (syms,)
+        expr = sympify(expression, locals={s.name: s for s in syms})
+        reasoning_text = ""
+        result = None
+
+        if operation == 'solve':
+            if not solve_for:
+                return _prepare_return_dict("error", reason="'solve_for' is required for 'solve' operation.")
+            target_symbol = symbols(solve_for)
+            if not isinstance(target_symbol, tuple):
+                target_symbol = (target_symbol,)
+            solution = solve(expr, *target_symbol)
+            result = solution
+            reasoning_text = f"Solved the expression for {solve_for}."
+        elif operation == 'diff':
+            if not wrt:
+                return _prepare_return_dict("error", reason="'wrt' is required for 'diff' operation.")
+            diff_var = symbols(wrt)
+            result = diff(expr, diff_var)
+            reasoning_text = f"Differentiated the expression with respect to {wrt}."
+        elif operation == 'integrate':
+            if not wrt:
+                return _prepare_return_dict("error", reason="'wrt' is required for 'integrate' operation.")
+            int_var = symbols(wrt)
+            result = integrate(expr, int_var)
+            reasoning_text = f"Integrated the expression with respect to {wrt}."
+        elif operation == 'simplify':
+            result = expr.simplify()
+            reasoning_text = "Simplified the expression."
+        elif operation == 'assign':
+            # Simple assignment of a numeric value to a variable
+            if len(syms) != 1:
+                return _prepare_return_dict("error", reason="'assign' requires exactly one variable")
+            value = sympify(expression)
+            reasoning_text = f"Assigned the value {value} to {syms[0]}"
+            return _prepare_return_dict("success", result={syms[0].name: float(value)}, reasoning=reasoning_text)
+        elif operation == 'subs':
+             if not at_point:
+                return _prepare_return_dict("error", reason="'at_point' is required for 'subs' operation.")
+             result = expr.subs(at_point)
+             reasoning_text = f"Substituted the variables with the values in {at_point}."
+        else:
+            return _prepare_return_dict("error", reason=f"Unknown operation: {operation}")
+
+        if at_point and operation != 'subs':
+            result_at_point = result.subs(at_point) if hasattr(result, 'subs') else result
+            reasoning_text += f" Then, substituted the point {at_point} into the result."
+            return _prepare_return_dict("success", result=float(result_at_point), latex=latex(result_at_point), reasoning=reasoning_text)
+
+        return _prepare_return_dict("success", result=result, latex=latex(result), reasoning=reasoning_text)
+
+    except (SympifyError, TypeError, ValueError, Exception) as e:
+        error_message = f"Symbolic manipulation failed: {e}"
+        PHYSICS_LOGGER.error(error_message, exc_info=True)
+        return _prepare_return_dict("error", reason=error_message)
+
     PHYSICS_LOGGER.info(f"Performing '{operation}' on '{expression}'")
     try:
         # Define symbolic variables from the comma-separated string
