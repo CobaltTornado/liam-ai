@@ -85,6 +85,7 @@ class TaskExecutionContext:
         self.scratchpad: list[dict] = []
         self.execution_summary: list[dict] = []
         self.progress_manager = progress_manager
+        self.retries = 0  # Add a retry counter for self-correction
         AGENT_LOGGER.info(f"TaskExecutionContext created for prompt: '{original_prompt[:50]}...'")
 
     async def add_to_scratchpad(self, entry_type: str, detail: str):
@@ -99,7 +100,7 @@ class TaskExecutionContext:
 
     async def update_step_status(self, step_id: int, status: str, detail: str | None = None):
         for step in self.plan:
-            if step.get('id') == step_id:
+            if str(step.get('id')) == str(step_id): # Compare as strings for robustness
                 step['status'] = status
                 if detail: step['detail'] = detail
                 await self.add_to_scratchpad('STEP_STATUS_UPDATE', f"Step {step_id} is now {status}.")
@@ -164,11 +165,9 @@ class ChiefArchitectAgent:
             "create_file": create_file, "read_file": read_file, "update_file": update_file, "delete_file": delete_file,
             "list_files": list_files,
             "git_commit": git_commit, "git_status": git_status,
-            "solve_expression": solve_expression,  # Changed from "solve_math_expression"
+            "solve_expression": solve_expression,
             "calculate_probability_distribution": probability_distribution,
             "calculate_descriptive_statistics": calculate_descriptive_statistics,
-            "symbolic_physics_manipulation": symbolic_manipulation, "perform_vector_operation": vector_operation,
-            "mark_step_complete": self._mark_step_complete, "request_user_input": self._request_user_input,
             "symbolic_manipulation": symbolic_manipulation,
             "vector_operation": vector_operation
         }
@@ -192,28 +191,18 @@ class ChiefArchitectAgent:
         self.current_task_context = None
         self.logger.log("All agent components and handlers initialized.", "Agent")
 
-    async def _request_user_input(self, question: str = "I need more details to proceed.") -> dict:
-        await self.progress_manager.broadcast("log", f"AGENT_QUESTION: {question}")
-        return {"status": "success", "message": "The question has been sent to the user."}
-
-    async def _mark_step_complete(self, step_id: int, detail: str = "Completed successfully.") -> dict:
-        if self.current_task_context:
-            await self.current_task_context.update_step_status(int(step_id), "completed", detail)
-            return {"status": "success", "message": f"Step {int(step_id)} marked as complete."}
-        return {"status": "error", "reason": "No active task context."}
 
     async def decide_mode(self, prompt: str, image_data: str | None = None) -> str:
         physics_keywords = ['physics', 'force', 'mass', 'acceleration', 'velocity', 'energy', 'solve', 'calculate',
                             'vector', 'particle', 'projectile', 'kinematics', 'energy']
         task_keywords = ['create', 'build', 'update', 'run', 'execute', 'develop', 'implement', 'make', 'write', 'file',
-                         'code', 'project', 'git', 'list', 'delete']
+                         'code', 'project', 'git', 'list', 'delete', 'replan', 'correct']
         vision_keywords = ['image', 'picture', 'see', 'look', 'analyze', 'describe', 'transcribe']
         prompt_lower = prompt.lower() if prompt else ""
         if image_data:
             if any(keyword in prompt_lower for keyword in physics_keywords): return "physics"
             if "solve" in prompt_lower or "calculate" in prompt_lower: return "physics"
             return "vision"
-        if 'request_user_input' in prompt_lower and len(prompt.split()) < 10: return "task"
         if any(keyword in prompt_lower for keyword in physics_keywords): return "physics"
         if any(keyword in prompt_lower for keyword in task_keywords): return "task"
         if len(prompt.split()) < 7: return "chat"
