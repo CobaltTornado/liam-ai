@@ -63,17 +63,10 @@ def get_deep_reasoning_prompt(user_prompt: str, project_state: str) -> str:
 
     **CRITICAL PLANNING INSTRUCTIONS:**
     1.  **Decompose:** Break the request into the smallest possible logical steps.
-    2.  **Map to Tools:** For each step, the "task" MUST be a call to a function from the AVAILABLE TOOLS list.
-    3.  **Tool Selection for Math/Physics:**
-        * For straightforward numerical calculations (even in multiple steps), you MUST use `solve_expression`. It will correctly evaluate the math and provide a step-by-step breakdown.
-        * Only use `symbolic_manipulation` for advanced algebraic tasks like solving an equation for a variable (e.g., 'solve for x in F=m*a'), differentiating, or integrating symbolically.
-    4.  **STATE MANAGEMENT (VERY IMPORTANT):**
-        * To save the result of a step, add a `return='variable_name'` argument to your tool call. For example: `solve_expression(expression='5 * 5', return='result_of_step_1')`.
-        * In subsequent steps, you can use the saved variable by placing its name directly in the expression. For example: `solve_expression(expression='result_of_step_1 + 10')`.
-        * I will automatically substitute the value of `result_of_step_1` before executing the second step.
-    5.  **No Hallucination:** Do not invent functions or arguments other than what is in the AVAILABLE TOOLS list.
-
-    Your final output must be a JSON array of objects, each with "id", "task", "status", and "reasoning".
+    2.  **JSON Schema:** The output MUST be a JSON array of objects. Each object MUST contain these exact keys: "id", "task", "status", and "reasoning".
+    3.  **The 'task' field:** The value for the "task" key MUST be a string containing a single, direct call to a function from the AVAILABLE TOOLS list. For example: `"task": "solve_expression(expression='5*9.8', return='weight')"`.
+    4.  **State Management:** To pass results between steps, use the `return='variable_name'` argument in your tool call. In subsequent steps, you can use `variable_name` directly in expressions.
+    5.  **Strictness:** Do not add any extra keys to the JSON objects like "tool_code". Do not use descriptive text in the 'task' field.
 
     User Request: "{user_prompt}"
     Current Project State: {project_state}
