@@ -1,9 +1,10 @@
 import math
 import logging
 import numpy as np
+import re
 from scipy.stats import norm, t, chi2, f
 from typing import List, Dict, Union
-from sympy import sympify, latex, SympifyError # Add this import
+from sympy import sympify, latex, SympifyError  # Add this import
 
 # --- Logging Setup ---
 MATH_LOGGER = logging.getLogger("MathToolV2")
@@ -13,12 +14,18 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 def _create_safe_eval_scope() -> Dict:
     """Creates a secured scope for the eval function, including math and numpy."""
     scope = {k: v for k, v in math.__dict__.items() if not k.startswith("__")}
-    # Add common numpy functions
-    for func_name in ['array', 'linspace', 'logspace', 'mean', 'median', 'std', 'var', 'min', 'max', 'sum', 'prod', 'cos', 'sin', 'tan', 'pi']: # Added trig functions and pi
+    # Add common numpy functions and ensure trig helpers are available
+    for func_name in ['array', 'linspace', 'logspace', 'mean', 'median', 'std',
+                      'var', 'min', 'max', 'sum', 'prod',
+                      'cos', 'sin', 'tan', 'radians', 'pi']:
         if hasattr(np, func_name):
-             scope[func_name] = getattr(np, func_name)
+            scope[func_name] = getattr(np, func_name)
         elif hasattr(math, func_name):
-             scope[func_name] = getattr(math, func_name)
+            scope[func_name] = getattr(math, func_name)
+    # Convenience trig helpers that accept degrees
+    scope['sin_deg'] = lambda x: math.sin(math.radians(x))
+    scope['cos_deg'] = lambda x: math.cos(math.radians(x))
+    scope['tan_deg'] = lambda x: math.tan(math.radians(x))
     # Add safe built-ins
     scope['abs'] = abs
     scope['round'] = round
@@ -36,11 +43,31 @@ def _prepare_return_dict(status: str, result: any = None, reason: str = None, la
         response["latex_representation"] = latex
     return response
 
+# --- Auto-conversion Helper ---
+def _convert_trig_degrees(expr: str) -> str:
+    """Convert trig functions with degree arguments to radians automatically."""
+    pattern = re.compile(r"(sin|cos|tan)\(([^()]+)\)")
+
+    def repl(match: re.Match) -> str:
+        func, arg = match.group(1), match.group(2).strip()
+        # Check for numeric argument
+        try:
+            val = float(arg)
+            if abs(val) > 2 * math.pi:
+                return f"{func}(radians({arg}))"
+        except Exception:
+            if re.search(r"deg|degree", arg, re.IGNORECASE):
+                return f"{func}(radians({arg}))"
+        return f"{func}({arg})"
+
+    return pattern.sub(repl, expr)
+
 # --- Core Tool Functions ---
 
 def solve_expression(expression: str) -> Dict:
     """
     Safely evaluates a string-based mathematical expression and provides its LaTeX form.
+    Trigonometric functions with degree arguments are automatically converted to radians.
 
     Args:
         expression (str): The mathematical expression to compute.
@@ -50,6 +77,7 @@ def solve_expression(expression: str) -> Dict:
         Dict: A dictionary with the evaluation result, LaTeX representation, or an error.
     """
     MATH_LOGGER.info(f"Evaluating expression: {expression}")
+    expression = _convert_trig_degrees(expression)
     safe_scope = _create_safe_eval_scope()
     latex_str = None
     try:
