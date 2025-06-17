@@ -3,6 +3,7 @@ import logging
 import numpy as np
 from scipy.stats import norm, t, chi2, f
 from typing import List, Dict, Union
+from sympy import sympify, latex, SympifyError # Add this import
 
 # --- Logging Setup ---
 MATH_LOGGER = logging.getLogger("MathToolV2")
@@ -13,8 +14,11 @@ def _create_safe_eval_scope() -> Dict:
     """Creates a secured scope for the eval function, including math and numpy."""
     scope = {k: v for k, v in math.__dict__.items() if not k.startswith("__")}
     # Add common numpy functions
-    for func_name in ['array', 'linspace', 'logspace', 'mean', 'median', 'std', 'var', 'min', 'max', 'sum', 'prod']:
-        scope[func_name] = getattr(np, func_name)
+    for func_name in ['array', 'linspace', 'logspace', 'mean', 'median', 'std', 'var', 'min', 'max', 'sum', 'prod', 'cos', 'sin', 'tan', 'pi']: # Added trig functions and pi
+        if hasattr(np, func_name):
+             scope[func_name] = getattr(np, func_name)
+        elif hasattr(math, func_name):
+             scope[func_name] = getattr(math, func_name)
     # Add safe built-ins
     scope['abs'] = abs
     scope['round'] = round
@@ -36,24 +40,38 @@ def _prepare_return_dict(status: str, result: any = None, reason: str = None, la
 
 def solve_expression(expression: str) -> Dict:
     """
-    Safely evaluates a string-based mathematical expression.
+    Safely evaluates a string-based mathematical expression and provides its LaTeX form.
 
     Args:
         expression (str): The mathematical expression to compute.
                           e.g., "np.mean([1, 2, 3]) * math.pi"
 
     Returns:
-        Dict: A dictionary with the evaluation result or an error.
+        Dict: A dictionary with the evaluation result, LaTeX representation, or an error.
     """
     MATH_LOGGER.info(f"Evaluating expression: {expression}")
     safe_scope = _create_safe_eval_scope()
+    latex_str = None
     try:
-        result = eval(expression, {"__builtins__": None}, safe_scope)
-        # Convert numpy arrays to lists for JSON serialization
+        # First, generate LaTeX representation for display
+        try:
+            # For cleaner LaTeX, we can sympify the expression.
+            # This is for display only, the eval uses the original string.
+            display_expr_str = expression.replace('np.', '').replace('math.', '')
+            sympy_expr = sympify(display_expr_str)
+            latex_str = latex(sympy_expr)
+        except (SympifyError, TypeError, Exception):
+            # If LaTeX generation fails, fall back to the raw expression.
+            latex_str = expression
+
+        # Second, evaluate the expression to get the numerical result
+        result = eval(expression, {"__builtins__": {}}, safe_scope)
+
         if isinstance(result, np.ndarray):
             result = result.tolist()
         MATH_LOGGER.info(f"Expression result: {result}")
-        return _prepare_return_dict("success", result=result)
+        # Include the generated LaTeX in the successful response
+        return _prepare_return_dict("success", result=result, latex=latex_str)
     except Exception as e:
         error_message = f"Failed to evaluate expression '{expression}': {e}"
         MATH_LOGGER.error(error_message)
