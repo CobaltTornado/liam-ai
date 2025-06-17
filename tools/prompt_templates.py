@@ -16,11 +16,15 @@ def get_available_tools_docstring():
     docstrings = []
     for tool in tools:
         try:
-            args = ", ".join(tool.__annotations__.keys())
-            doc = tool.__doc__.strip().split('\n')[0]
+            # Generate a more readable signature
+            args_list = [f"{name}: {param.annotation.__name__}" for name, param in tool.__annotations__.items() if name != 'return']
+            args = ", ".join(args_list)
+            # Safely get the first line of the docstring
+            doc = tool.__doc__.strip().split('\n')[0] if tool.__doc__ else "No description available."
             docstring = f"- {tool.__name__}({args}): {doc}"
             docstrings.append(docstring)
         except Exception:
+            # Skip any tool that fails to generate a docstring
             continue
     return "\n".join(docstrings)
 
@@ -40,9 +44,11 @@ def get_standard_planning_prompt(user_prompt: str, project_state: str) -> str:
     1.  **Analyze Request:** Determine if the request is a math/physics problem or a coding/file system task.
     2.  **Use Tools Directly:** Based on the AVAILABLE TOOLS, create a plan that calls the tools with the exact arguments specified in their docstrings.
     3.  **Prioritize Specialized Tools:** For physics or math problems, use `symbolic_manipulation` or `vector_operation`. Do not write code to a file unless absolutely necessary.
+    4.  **JSON FORMAT:** The output MUST be a valid JSON array of objects. Each object represents a step and must have "id", "task", "status": "pending", and a "reasoning" key.
 
     User Request: "{user_prompt}"
-    Current Project State: {project_state}
+    Current Project State:
+    {project_state}
 
     Generate the most direct and efficient JSON plan now, using only the tools listed above.
     """
@@ -77,13 +83,12 @@ def get_deep_reasoning_prompt(user_prompt: str, project_state: str) -> str:
         * Do not add any extra keys or use descriptive text in the "task" field.
 
     User Request: "{user_prompt}"
-    Current Project State: {project_state}
+    Current Project State:
+    {project_state}
     Generate the plan using `solve_expression` for all steps.
     """
 
-
-def get_self_correction_prompt(original_prompt: str, failed_step_id: int, current_plan: list[dict],
-                               scratchpad: list[dict], project_state: str) -> str:
+def get_self_correction_prompt(original_prompt: str, failed_step_id: int, current_plan: list[dict], scratchpad: list[dict], project_state: str, error_message: str) -> str:
     """
     Returns a prompt designed to guide the agent in self-correction after a failed execution step.
     """
@@ -92,19 +97,36 @@ def get_self_correction_prompt(original_prompt: str, failed_step_id: int, curren
     tool_docs = get_available_tools_docstring()
 
     return f"""
-    A previous plan failed. Analyze the failure and propose a revised JSON plan.
+    You are an expert AI architect specializing in self-correction. A previous plan you created has failed. Your task is to analyze the error and create a new, corrected JSON plan to achieve the user's original goal.
+
+    **USER'S ORIGINAL REQUEST:**
+    "{original_prompt}"
+
+    **CONTEXT OF FAILURE:**
+    - **Failed Step ID:** {failed_step_id}
+    - **Error Message:** "{error_message}"
+    - **The Plan That Failed:**
+      ```json
+      {plan_str}
+      ```
+    - **Execution Scratchpad (State Before Failure):**
+      ```json
+      {scratchpad_str}
+      ```
 
     **AVAILABLE TOOLS:**
     ```
     {tool_docs}
     ```
-    User's Original Request: "{original_prompt}"
-    Failed Step ID: {failed_step_id}
-    Current Plan: {plan_str}
-    Scratchpad: {scratchpad_str}
-    Current Project State: {project_state}
 
-    Critically analyze what went wrong. Propose a revised plan starting from step {failed_step_id} using ONLY the AVAILABLE TOOLS and following state management rules.
+    **Current Project State:**
+    {project_state}
 
-    Generate the REVISED JSON plan now.
+    **CORRECTION INSTRUCTIONS:**
+    1.  **Analyze the Error:** Carefully read the error message and review the failed step and the scratchpad. Identify the root cause. Was it a typo, incorrect logic, wrong tool, or bad parameters?
+    2.  **Formulate a New Strategy:** Decide on a new approach. You might need to use a different tool, correct the parameters, or add prerequisite steps.
+    3.  **Generate a COMPLETE New Plan:** Create a brand new, full JSON plan from start to finish that implements your new strategy. Do not just fix the single failed step. The new plan should replace the old one entirely.
+    4.  **Adhere to Format:** The new plan must be a valid JSON array of objects, with each object having "id", "task", "status": "pending", and a "reasoning" key.
+
+    Generate the new, corrected JSON plan now.
     """
