@@ -12,20 +12,26 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 
 # --- Helper Functions ---
 def _create_safe_eval_scope() -> Dict:
-    """Creates a secured scope for the eval function, including math and numpy."""
+    """
+    Creates a secured scope for the eval function, including math, numpy,
+    and convenience functions for degree-based trigonometry.
+    """
+    # Start with all functions from the math module, like sin, cos, etc.
     scope = {k: v for k, v in math.__dict__.items() if not k.startswith("__")}
-    # Add common numpy functions and ensure trig helpers are available
-    for func_name in ['array', 'linspace', 'logspace', 'mean', 'median', 'std',
-                      'var', 'min', 'max', 'sum', 'prod',
-                      'cos', 'sin', 'tan', 'radians', 'pi']:
+
+    # Add the entire math module for access to constants like math.pi
+    scope['math'] = math
+
+    # Add common numpy functions
+    for func_name in ['array', 'linspace', 'logspace', 'mean', 'median', 'std', 'var', 'min', 'max', 'sum', 'prod']:
         if hasattr(np, func_name):
             scope[func_name] = getattr(np, func_name)
-        elif hasattr(math, func_name):
-            scope[func_name] = getattr(math, func_name)
-    # Convenience trig helpers that accept degrees
+
+    # Add convenience trig helpers that accept degrees directly
     scope['sin_deg'] = lambda x: math.sin(math.radians(x))
     scope['cos_deg'] = lambda x: math.cos(math.radians(x))
     scope['tan_deg'] = lambda x: math.tan(math.radians(x))
+
     # Add safe built-ins
     scope['abs'] = abs
     scope['round'] = round
