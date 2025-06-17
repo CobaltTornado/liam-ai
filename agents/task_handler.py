@@ -101,7 +101,14 @@ class TaskModeHandler(BaseModeHandler):
             await task_context.update_step_status(step_id, 'in_progress')
 
             try:
-                task_string = step['task']
+                # --- START FIX ---
+                # Prioritize 'tool_code' if it exists, otherwise fall back to 'task'.
+                # This handles cases where the planner outputs a descriptive task and a separate tool call.
+                task_string = step.get('tool_code') or step.get('task')
+                if not task_string:
+                    raise ValueError("Step is missing a 'task' or 'tool_code' field.")
+                # --- END FIX ---
+
                 tool_name, args, return_key = self._parse_task_string(task_string)
 
                 # Substitute variables from memory before calling the tool
