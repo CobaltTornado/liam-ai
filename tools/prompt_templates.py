@@ -64,7 +64,9 @@ def get_deep_reasoning_prompt(user_prompt: str, project_state: str) -> str:
     **CRITICAL PLANNING INSTRUCTIONS:**
     1.  **Decompose:** Break the request into the smallest possible logical steps.
     2.  **Map to Tools:** For each step, the "task" MUST be a call to a function from the AVAILABLE TOOLS list.
-    3.  **Physics Problem Rule:** For physics problems that require calculating a value from formulas (e.g., finding acceleration, force, velocity), you MUST use the `symbolic_manipulation` tool for each calculation step. Do NOT use `solve_expression`. This is required to generate a step-by-step symbolic breakdown.
+    3.  **Tool Selection for Math/Physics:**
+        * For straightforward numerical calculations (even in multiple steps), you MUST use `solve_expression`. It will correctly evaluate the math and provide a step-by-step breakdown.
+        * Only use `symbolic_manipulation` for advanced algebraic tasks like solving an equation for a variable (e.g., 'solve for x in F=m*a'), differentiating, or integrating symbolically.
     4.  **STATE MANAGEMENT (VERY IMPORTANT):**
         * To save the result of a step, add a `return='variable_name'` argument to your tool call. For example: `solve_expression(expression='5 * 5', return='result_of_step_1')`.
         * In subsequent steps, you can use the saved variable by placing its name directly in the expression. For example: `solve_expression(expression='result_of_step_1 + 10')`.
