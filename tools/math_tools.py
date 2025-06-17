@@ -126,9 +126,14 @@ def _convert_trig_degrees(expr: str) -> str:
 
 
 def solve_expression(expression: str) -> Dict[str, Any]:
-    """Safely *eval* an arithmetic expression and return its numeric and LaTeX forms."""
+    """Safely *eval* an arithmetic expression and return its numeric and LaTeX forms.
+
+    The function also normalizes the caret (``^``) operator to Python's ``**``
+    exponentiation to provide a more user-friendly syntax.
+    """
     LOGGER.info("Evaluating expression: %s", expression)
     prepared_expr = _convert_trig_degrees(expression)
+    prepared_expr = prepared_expr.replace("^", "**")
     safe_scope = _create_safe_eval_scope()
 
     # Attempt LaTeX prettification (best‑effort)

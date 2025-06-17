@@ -207,10 +207,12 @@ class TaskModeHandler(BaseModeHandler):
         """
         match = re.match(r'([\w_]+)\s*\((.*)\)', task_string)
         if not match:
-            # Fallback for simple tool names without arguments
+            # Fallback for simple tool names without arguments. If the string
+            # is plain English, treat it as a no-op log message so execution
+            # can continue without failure.
             if re.match(r'^[\w_]+$', task_string):
                 return task_string, {}, None
-            raise ValueError(f"Could not parse task string into tool and arguments: {task_string}")
+            return "log_message", {"message": task_string}, None
 
         tool_name = match.group(1)
         args_str = match.group(2).strip()
@@ -220,20 +222,22 @@ class TaskModeHandler(BaseModeHandler):
         args = {}
         return_key = None
 
-        # This regex handles key='value' pairs, including the optional 'return' key
-        # It's improved to handle nested parentheses in the value string
-        pattern = re.compile(r"([\w_]+)\s*=\s*'((?:[^']|'')*)'")
+        # This regex handles key='value' or key="value" pairs, including the
+        # optional 'return' key. It also supports nested parentheses in the
+        # value string.
+        pattern = re.compile(r"([\w_]+)\s*=\s*(?:'((?:[^']|'')*)'|\"((?:[^\"]|\"\")*)\")")
         # It's important to process the string from left to right
         last_pos = 0
         for match_obj in pattern.finditer(args_str):
-            key, value = match_obj.groups()
+            key = match_obj.group(1)
+            value = match_obj.group(2) if match_obj.group(2) is not None else match_obj.group(3)
             # This check ensures we don't misinterpret parts of a string value as another argument
             if match_obj.start() < last_pos:
                 continue
             last_pos = match_obj.end()
 
-            # Un-escape single quotes if they were doubled up inside the string
-            value = value.replace("''", "'")
+            # Un-escape quotes if they were doubled inside the string
+            value = value.replace("''", "'").replace('""', '"')
             if key == 'return':
                 return_key = value
             else:
