@@ -44,7 +44,8 @@ def get_standard_planning_prompt(user_prompt: str, project_state: str) -> str:
     1.  **Analyze Request:** Determine if the request is a math/physics problem or a coding/file system task.
     2.  **Use Tools Directly:** Based on the AVAILABLE TOOLS, create a plan that calls the tools with the exact arguments specified in their docstrings.
     3.  **Prioritize Specialized Tools:** For physics or math problems, use `symbolic_manipulation` or `vector_operation`. Do not write code to a file unless absolutely necessary.
-    4.  **JSON FORMAT:** The output MUST be a valid JSON array of objects. Each object represents a step and must have "id", "task", "status": "pending", and a "reasoning" key.
+    4.  **Check Trigonometry Units:** When using `sin`, `cos`, or `tan`, ensure angles are in radians. Convert degrees with `(pi / 180)` or `math.radians`.
+    5.  **JSON FORMAT:** The output MUST be a valid JSON array of objects. Each object represents a step and must have "id", "task", "status": "pending", and a "reasoning" key.
 
     User Request: "{user_prompt}"
     Current Project State:
@@ -73,6 +74,7 @@ def get_deep_reasoning_prompt(user_prompt: str, project_state: str) -> str:
         * For ALL numerical calculations, including trigonometry (sin, cos, tan) and using constants like pi, you MUST use the `solve_expression` tool.
         * DO NOT use `symbolic_manipulation` for numerical evaluation. Use it ONLY for symbolic algebra (e.g., solving 'x+y=z' for 'x').
         * This ENTIRE physics problem can be solved using a sequence of calls to `solve_expression`.
+        * Ensure angles for trigonometric functions are in radians. Convert degrees with `(pi / 180)` or `math.radians`.
     3.  **STATE MANAGEMENT:**
         * To save a result, add `return='variable_name'` to your `solve_expression` call. (e.g., `..., return='Fx')`).
         * To use a saved result, place the variable name directly in the next expression. (e.g., `expression='Fx - 10'`).
