@@ -50,11 +50,11 @@ def get_standard_planning_prompt(user_prompt: str, project_state: str) -> str:
 
 def get_deep_reasoning_prompt(user_prompt: str, project_state: str) -> str:
     """
-    Returns the deep reasoning prompt, now with explicit instructions for stateful planning.
+    Returns the deep reasoning prompt, now with very explicit instructions on tool selection.
     """
     tool_docs = get_available_tools_docstring()
     return f"""
-    You are in deep reasoning mode. Create a detailed, executable, multi-step JSON plan using ONLY the tools provided.
+    You are an expert AI planner. Your task is to create a JSON plan to solve the user's request using ONLY the tools provided.
 
     **AVAILABLE TOOLS:**
     ```
@@ -62,15 +62,23 @@ def get_deep_reasoning_prompt(user_prompt: str, project_state: str) -> str:
     ```
 
     **CRITICAL PLANNING INSTRUCTIONS:**
-    1.  **Decompose:** Break the request into the smallest possible logical steps.
-    2.  **JSON Schema:** The output MUST be a JSON array of objects. Each object MUST contain these exact keys: "id", "task", "status", and "reasoning".
-    3.  **The 'task' field:** The value for the "task" key MUST be a string containing a single, direct call to a function from the AVAILABLE TOOLS list. For example: `"task": "solve_expression(expression='5*9.8', return='weight')"`.
-    4.  **State Management:** To pass results between steps, use the `return='variable_name'` argument in your tool call. In subsequent steps, you can use `variable_name` directly in expressions.
-    5.  **Strictness:** Do not add any extra keys to the JSON objects like "tool_code". Do not use descriptive text in the 'task' field.
+    1.  **Analyze the Request:** The user wants to solve a multi-step numerical physics problem.
+    2.  **CHOOSE THE RIGHT TOOL:**
+        * For ALL numerical calculations, including trigonometry (sin, cos, tan) and using constants like pi, you MUST use the `solve_expression` tool.
+        * DO NOT use `symbolic_manipulation` for numerical evaluation. Use it ONLY for symbolic algebra (e.g., solving 'x+y=z' for 'x').
+        * This ENTIRE physics problem can be solved using a sequence of calls to `solve_expression`.
+    3.  **STATE MANAGEMENT:**
+        * To save a result, add `return='variable_name'` to your `solve_expression` call. (e.g., `..., return='Fx')`).
+        * To use a saved result, place the variable name directly in the next expression. (e.g., `expression='Fx - 10'`).
+    4.  **JSON FORMAT:**
+        * The output MUST be a JSON array of objects.
+        * Each object MUST have these keys: "id", "task", "status", "reasoning".
+        * The "task" field MUST be a string containing a direct call to `solve_expression`. For example: `"task": "solve_expression(expression='5*9.8', return='weight')"`.
+        * Do not add any extra keys or use descriptive text in the "task" field.
 
     User Request: "{user_prompt}"
     Current Project State: {project_state}
-    Generate the executable, stateful, tool-centric JSON plan now.
+    Generate the plan using `solve_expression` for all steps.
     """
 
 
