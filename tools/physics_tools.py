@@ -32,7 +32,7 @@ def _prepare_return_dict(status: str, result: any = None, reason: str = None, la
 def symbolic_manipulation(
     expression: str,
     operation: str,
-    variables: str,
+    variables: str = "",
     solve_for: Optional[str] = None,
     wrt: Optional[str] = None,
     at_point: Optional[Dict[str, float]] = None
@@ -54,7 +54,9 @@ def symbolic_manipulation(
     PHYSICS_LOGGER.info(f"Performing '{operation}' on '{expression}'")
     try:
         # Define symbolic variables from the comma-separated string
-        syms = symbols(variables)
+        syms = symbols(variables) if variables else ()
+        if not isinstance(syms, (list, tuple)):
+            syms = (syms,)
         expr = sympify(expression, locals={s.name: s for s in syms})
         reasoning_text = ""
         result = None
@@ -83,6 +85,13 @@ def symbolic_manipulation(
         elif operation == 'simplify':
             result = expr.simplify()
             reasoning_text = "Simplified the expression."
+        elif operation == 'assign':
+            # Simple assignment of a numeric value to a variable
+            if len(syms) != 1:
+                return _prepare_return_dict("error", reason="'assign' requires exactly one variable")
+            value = sympify(expression)
+            reasoning_text = f"Assigned the value {value} to {syms[0]}"
+            return _prepare_return_dict("success", result={syms[0].name: float(value)}, reasoning=reasoning_text)
         elif operation == 'subs':
              if not at_point:
                 return _prepare_return_dict("error", reason="'at_point' is required for 'subs' operation.")
